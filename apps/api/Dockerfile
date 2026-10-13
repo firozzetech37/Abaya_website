@@ -24,7 +24,10 @@ COPY apps/api apps/api
 RUN pnpm --filter @abaya/db generate && pnpm --filter @abaya/api build
 
 FROM node:22-bookworm-slim AS runtime
-RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates tini && rm -rf /var/lib/apt/lists/*
+# Fonts: the visible watermark on AI previews and try-ons draws its text with a serif font
+# (watermark/domain/visible-mark.ts); without any fonts every letter would be a box.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates tini fontconfig fonts-liberation fonts-dejavu-core \
+  && fc-cache -f && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
 WORKDIR /repo
 COPY --from=build /repo /repo

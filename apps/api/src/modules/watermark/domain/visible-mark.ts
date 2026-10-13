@@ -7,7 +7,8 @@
 
 const escapeXml = (s: string) => s.replace(/[<>&'"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' })[c]!);
 
-const SERIF = "Georgia, 'Times New Roman', 'DejaVu Serif', serif";
+/** Georgia on a Mac; on the server (Docker) the installed Liberation Serif or DejaVu Serif. */
+const SERIF = "Georgia, 'Times New Roman', 'Liberation Serif', 'DejaVu Serif', serif";
 
 export interface VisibleMarkText {
   /** Repeated diagonally, e.g. "Abaya Atelier · AI preview". */
