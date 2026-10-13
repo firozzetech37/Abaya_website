@@ -3,6 +3,7 @@
 import type { AbayaStyle, DesignCard, DesignDetail, DesignFacets, ListDesignsQuery, Paginated, PriceBreakdown, QuoteBody } from '@abaya/contracts';
 import { type InfiniteData, keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { api } from '../api-client';
+import { heroLooks } from '../hero';
 import { qk } from './keys';
 
 export type DesignFilters = Partial<
@@ -49,6 +50,16 @@ export function useStyleShelf(style: AbayaStyle, limit = 8) {
     queryFn: ({ signal }) =>
       api<Paginated<DesignCard>>('/designs', { anonymous: true, signal, query: { style, sort: 'newest', limit } }),
     staleTime: 60_000,
+  });
+}
+
+/** The abaya the try-on banner opens: the newest one the home hero shows first. */
+export function useNewestTryOnSlug() {
+  return useQuery({
+    queryKey: qk.designs({ sort: 'newest', limit: 30 }),
+    queryFn: ({ signal }) => api<Paginated<DesignCard>>('/designs', { anonymous: true, signal, query: { sort: 'newest', limit: 30 } }),
+    staleTime: 5 * 60_000,
+    select: (page) => heroLooks(page.items)[0]?.slug ?? page.items[0]?.slug ?? null,
   });
 }
 

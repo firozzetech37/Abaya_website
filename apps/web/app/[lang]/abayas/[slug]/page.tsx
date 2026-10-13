@@ -1,3 +1,4 @@
+import { TryOnButton } from '@/components/design/try-on-button';
 import { formatINR, parseDescriptionSpecs } from '@abaya/contracts';
 import { Camera, Clock, RefreshCcw } from 'lucide-react';
 import { EyebrowStar } from '@/components/ornament/geometric';
@@ -153,6 +154,7 @@ export default async function DesignPage({ params }: Props) {
             <p className="pb-1 text-sm text-muted">{t.madeToMeasure}</p>
           </div>
           <OrderingSoonNote className="mt-3" />
+          <TryOnButton className="mt-5" />
 
           {swatches.length > 0 && (
             <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-muted">

@@ -2,12 +2,13 @@
 
 import type { DesignCard as DesignCardDto } from '@abaya/contracts';
 
-import { ArrowRight, ArrowUpRight } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Camera } from 'lucide-react';
 import { type MouseEvent, useState } from 'react';
 import { Link } from '@/components/i18n/navigation';
 import { useStrings } from '@/components/i18n/locale-provider';
 import { TiltCard } from '@/components/motion/tilt-card';
 import { rememberFly } from '@/lib/fly';
+import { tryOnHref } from '@/lib/try-on-link';
 import { cn } from '@/lib/utils';
 import { DesignImage } from './design-image';
 import { QuickView } from './quick-view';
@@ -73,16 +74,35 @@ export function DesignCard({ design, priority }: { design: DesignCardDto; priori
                 />
               )}
             </Link>
+            {/* Touch screens (no hover buttons): a small try-on chip stays on the photo */}
+            <Link
+              href={tryOnHref(design.slug)}
+              aria-label={home.cardTryOnNamed(design.name)}
+              className="absolute bottom-3 start-3 z-20 inline-flex items-center gap-1 rounded-full bg-accent-950/75 px-2.5 py-1 text-[11px] font-medium text-gold-100 shadow-md backdrop-blur [@media(hover:hover)]:hidden"
+            >
+              <Camera className="size-3" aria-hidden />
+              {home.cardTryOn}
+            </Link>
             {/* Quick view and Customize rise in on hover or keyboard focus (never on touch screens) */}
             <div className="absolute inset-x-4 bottom-4 z-20 hidden flex-col gap-2 transition-all duration-500 [transform:translateZ(20px)] [@media(hover:hover)]:flex [@media(hover:hover)]:translate-y-4 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-focus-within:translate-y-0 [@media(hover:hover)]:group-focus-within:opacity-100 [@media(hover:hover)]:group-hover:translate-y-0 [@media(hover:hover)]:group-hover:opacity-100">
-              <button
-                type="button"
-                onClick={() => setQuick(true)}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-surface/95 text-sm font-medium text-foreground shadow-[0_12px_30px_-12px_rgba(35,28,23,0.5)] backdrop-blur transition-colors hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
-              >
-                {home.quickView}
-                <ArrowUpRight className="size-3.5 rtl:-scale-x-100" aria-hidden />
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setQuick(true)}
+                  className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-surface/95 px-2 text-sm font-medium text-foreground shadow-[0_12px_30px_-12px_rgba(35,28,23,0.5)] backdrop-blur transition-colors hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+                >
+                  <span className="truncate">{home.quickView}</span>
+                  <ArrowUpRight className="size-3.5 shrink-0 rtl:-scale-x-100" aria-hidden />
+                </button>
+                <Link
+                  href={tryOnHref(design.slug)}
+                  aria-label={home.cardTryOnNamed(design.name)}
+                  className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-[linear-gradient(160deg,#E9D49A_0%,#CCA24A_55%,#B48734_100%)] px-2 text-sm font-medium text-accent-950 shadow-[0_12px_30px_-12px_rgba(107,31,42,0.55)] transition-[filter] hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+                >
+                  <Camera className="size-3.5 shrink-0" aria-hidden />
+                  <span className="truncate">{home.cardTryOn}</span>
+                </Link>
+              </div>
               <Link
                 href={href}
                 onClick={remember}

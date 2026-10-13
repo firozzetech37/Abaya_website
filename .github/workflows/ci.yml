@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TURBO_TELEMETRY_DISABLED: 1
+
+jobs:
+  checks:
+    name: Install, typecheck, lint, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4 # version comes from package.json "packageManager"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Uses placeholder URLs from .env.example; no secrets are needed in CI.
+      - name: Validate Prisma schema
+        run: pnpm --filter @abaya/db validate
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Unit tests
+        run: pnpm test
+
+  api-e2e:
+    name: API end-to-end tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      E2E_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/abaya_e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      # The e2e setup drops and recreates abaya_e2e, migrates and seeds it.
+      - run: pnpm --filter @abaya/api test:e2e
+
+  ai-service:
+    name: AI service tests (Python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: services/ai
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # The tests use a fake model, so torch/open_clip (large downloads) are not needed here.
+      - run: pip install "fastapi>=0.115" "uvicorn>=0.32" "httpx>=0.27" "pillow>=11" "imagehash>=4.3" "numpy>=2" "python-dotenv>=1" "pytest>=8"
+      - run: python -m pytest -q

@@ -13,10 +13,12 @@ import { Alert } from '@/components/ui/misc';
 import { errorMessage, serverText } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 import { OPEN_PICTURE_EVENT, PICTURE_PARAM, watchPicture } from '@/lib/ai-watch';
+import { OPEN_TRYON_EVENT, TRYON_PARAM } from '@/lib/try-on-link';
+import { usePathname, useRouter } from '@/components/i18n/navigation';
 import { HEIC_ACCEPT, jpegFromHeic, looksLikeHeic } from '@/lib/heic';
 import { TRYON_ACCEPT, useAiLimits, useAiPicture, useCreatePreview, useCreateTryOn, useDeleteTryOn, useRecentAiPictures } from '@/lib/queries/try-on';
 import { useMeasurements } from '@/lib/queries/me';
-import { cn } from '@/lib/utils';
+import { cn, loginHref } from '@/lib/utils';
 
 /**
  * "See it before it's made": an AI preview of the design with the customer's choices, and a
@@ -41,7 +43,8 @@ export function AiStudio({
   canPreview?: boolean;
 }) {
   const { tryOn: t, design: d } = useStrings();
-  const loggedIn = useAuth().status === 'authenticated';
+  const authStatus = useAuth().status;
+  const loggedIn = authStatus === 'authenticated';
   const limits = useAiLimits();
   const create = useCreatePreview();
   const [previewId, setPreviewId] = useState<string | null>(null);
@@ -77,8 +80,32 @@ export function AiStudio({
 
   const done = picture.data?.status === 'DONE' && picture.data.imageUrl ? picture.data : null;
 
-  // "View" on the ready notice: open that picture here (from the address, or at once when she is already on this page).
   const section = useRef<HTMLElement>(null);
+  // "Try it on" from elsewhere (home page, cards, the announcement: ?tryon=1) or from the button
+  // under the price: open the try-on window here. Signed out: log in first, then come back to it.
+  const pathname = usePathname();
+  const router = useRouter();
+  useEffect(() => {
+    if (authStatus === 'loading') return;
+    const openTryOn = () => {
+      if (authStatus !== 'authenticated') {
+        router.push(loginHref(`${pathname}?${TRYON_PARAM}=1`));
+        return;
+      }
+      setTryOnOpen(true);
+      requestAnimationFrame(() => section.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    };
+    const url = new URL(window.location.href);
+    if (url.searchParams.get(TRYON_PARAM)) {
+      url.searchParams.delete(TRYON_PARAM);
+      window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+      openTryOn();
+    }
+    window.addEventListener(OPEN_TRYON_EVENT, openTryOn);
+    return () => window.removeEventListener(OPEN_TRYON_EVENT, openTryOn);
+  }, [authStatus, pathname, router]);
+
+  // "View" on the ready notice: open that picture here (from the address, or at once when she is already on this page).
   useEffect(() => {
     if (!loggedIn) return;
     const open = (id: string) => {

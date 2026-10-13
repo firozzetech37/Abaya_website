@@ -41,6 +41,13 @@ export const nav = {
   orders: 'My orders',
   downloads: 'My downloads',
   menu: 'Menu',
+  /** The try-on banner under the navbar. */
+  tryOnBanner: 'Virtual Try On',
+  tryOnBannerBody: 'See yourself in our new abayas',
+  tryOnBannerShort: 'See it on you',
+  tryOnBannerClose: 'Hide this banner',
+  /** On a clickable announcement. */
+  announcementGo: 'Discover',
   closeMenu: 'Close menu',
   home: 'Home',
   cta: 'Design yours',
@@ -121,6 +128,29 @@ export const home = {
   heroBody:
     'Pick a design you love, make it yours — fabric, colour, sleeves and details — and our tailors stitch it to your measurements.',
   heroCta: 'Explore abayas',
+  // Virtual try-on, highlighted on the home page and on every card
+  heroTryOn: 'Try it on virtually',
+  newTag: 'New',
+  heroTryOnChip: 'See this abaya on you',
+  cardTryOn: 'Try on',
+  cardTryOnNamed: (name: string) => `Try ${name} on with AI`,
+  tryOnFeature: {
+    eyebrow: 'Virtual try-on',
+    title: 'See it on you before it is stitched',
+    body: 'Upload a full-length photo, or let our AI create a model with your height and build, and see any abaya on you in under a minute. Free, and only for you.',
+    steps: [
+      { title: 'Pick an abaya', body: 'Any design in the shop, as photographed or customised your way.' },
+      { title: 'Add your photo', body: 'Or choose “A model like me” with your height and build.' },
+      { title: 'See it on you', body: 'Ready in about a minute. Try another style any time.' },
+    ],
+    cta: 'Try it on now',
+    browse: 'Choose an abaya',
+    privacy: 'Your photo is private and deleted automatically within an hour.',
+    before: 'Before',
+    after: 'After · AI try-on',
+    sliderLabel: 'Compare the photo before and after the virtual try-on',
+    demoNote: 'Example made with our own model photo.',
+  },
   heroSecondary: 'How it works',
   heroShowcaseLabel: 'Featured designs',
   heroShowcaseLink: (name: string) => `View ${name}`,
@@ -415,6 +445,8 @@ export const design = {
   noPhotosIn: (colour: string) => `No photos in ${colour} yet`,
   // Product page (premium layout)
   madeToMeasure: 'Stitched to your measurements',
+  tryOnButton: 'Try it on you',
+  tryOnHint: 'See this abaya on you with AI, ready in about a minute',
   colourCount: (n: number) => `${n} ${n === 1 ? 'colour' : 'colours'}`,
   promisesLabel: 'Our promise',
   promiseLeadTitle: (days: number) => `${days} days`,

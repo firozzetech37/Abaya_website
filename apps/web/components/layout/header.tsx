@@ -1,7 +1,7 @@
 'use client';
 
 import { Link, usePathname } from '@/components/i18n/navigation';
-import { ArrowRight, Heart, Menu, ShoppingBag, UserRound, X } from 'lucide-react';
+import { ArrowRight, Heart, Menu, ShoppingBag, Sparkles, UserRound, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -14,7 +14,6 @@ import { useOrderingOpen } from '@/lib/queries/ordering';
 import { cn, loginHref } from '@/lib/utils';
 import { CurrencySwitch } from '@/components/i18n/currency-switch';
 import { LanguageSwitch } from '@/components/i18n/language-switch';
-import { EyebrowStar } from '@/components/ornament/geometric';
 import { BrandMark } from './brand-mark';
 
 
@@ -245,6 +244,7 @@ export function Header() {
  * (Announcements page; English and Arabic, with dates). Hidden while none is live.
  */
 function AnnouncementBar() {
+  const { nav } = useStrings();
   const [index, setIndex] = useState(0);
   const live = useAnnouncements();
   const messages: { text: string; linkPath: string | null }[] = live.data ?? [];
@@ -257,19 +257,27 @@ function AnnouncementBar() {
 
   if (messages.length === 0) return null;
   return (
-    <div className="relative h-9 overflow-hidden bg-accent-900 text-accent-50">
+    <div className="relative h-10 overflow-hidden bg-[linear-gradient(90deg,#2E0D14_0%,#5A1823_50%,#2E0D14_100%)] text-accent-50 sm:h-11">
+      {/* A gold sheen passes across now and then */}
+      <span aria-hidden className="pointer-events-none absolute inset-y-0 -start-1/3 w-1/3 bg-gradient-to-r from-transparent via-gold-200/25 to-transparent motion-safe:animate-[announce-sheen_5s_ease-in-out_infinite]" />
       {messages.map((m, i) => {
         const inner = (
           <>
-            <EyebrowStar className="me-2.5 hidden size-3 text-gold-300 sm:block" />
-            {m.text}
-            <EyebrowStar className="ms-2.5 hidden size-3 text-gold-300 sm:block" />
+            <Sparkles className="me-2 size-3.5 shrink-0 text-gold-300 motion-safe:animate-pulse" aria-hidden />
+            <span className="bg-gradient-to-r from-gold-100 via-white to-gold-100 bg-clip-text text-transparent">{m.text}</span>
+            {m.linkPath ? (
+              <span className="ms-2.5 inline-flex shrink-0 items-center gap-1 rounded-full bg-gold-300 px-2 py-0.5 text-[10px] font-semibold tracking-[0.14em] text-accent-950 transition-colors group-hover/announce:bg-gold-200">
+                {nav.announcementGo}
+                <ArrowRight className="size-3 rtl:-scale-x-100" aria-hidden />
+              </span>
+            ) : (
+              <Sparkles className="ms-2 size-3.5 shrink-0 text-gold-300 motion-safe:animate-pulse" aria-hidden />
+            )}
           </>
         );
         const className = cn(
-          'absolute inset-0 flex items-center justify-center px-4 text-center text-[11px] font-medium uppercase tracking-[0.22em] transition-all duration-700 ease-out sm:text-xs',
+          'group/announce absolute inset-0 flex items-center justify-center px-4 text-center text-[11px] font-semibold uppercase tracking-[0.2em] transition-all duration-700 ease-out sm:text-[13px]',
           i === index ? 'translate-y-0 opacity-100' : i === (index + messages.length - 1) % messages.length ? '-translate-y-full opacity-0' : 'translate-y-full opacity-0',
-          m.linkPath && 'hover:text-white hover:underline hover:underline-offset-4',
         );
         return m.linkPath ? (
           <Link key={m.text} href={m.linkPath} aria-hidden={i !== index} tabIndex={i === index ? 0 : -1} className={className}>

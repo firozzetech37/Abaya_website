@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { ArrowRight, Camera, RefreshCcw, Ruler } from 'lucide-react';
+import { ArrowRight, Camera, RefreshCcw, Ruler, Sparkles } from 'lucide-react';
 import type { Metadata } from 'next';
 import type { CSSProperties } from 'react';
 import { Link } from '@/components/i18n/navigation';
@@ -10,6 +10,9 @@ import { CollectionReel } from '@/components/home/collection-reel';
 import { Craftsmanship } from '@/components/home/craftsmanship';
 import { HeroHeadline } from '@/components/home/hero-headline';
 import { HeroShowcase } from '@/components/home/hero-showcase';
+import { TryOnFeature } from '@/components/home/try-on-feature';
+import { heroLooks } from '@/lib/hero';
+import { tryOnHref } from '@/lib/try-on-link';
 import { Journey } from '@/components/home/journey';
 import { Silhouettes } from '@/components/home/silhouettes';
 import { ThreeSteps } from '@/components/home/three-steps';
@@ -65,6 +68,8 @@ export default async function HomePage({ params }: { params: Promise<{ lang: str
   ]);
   const items = designs.ok ? designs.data.items : [];
   const heroDesigns = heroPool.ok ? heroPool.data.items : items;
+  // The try-on buttons open the abaya the hero shows first.
+  const tryOnSlug = heroLooks(heroDesigns)[0]?.slug ?? items[0]?.slug ?? null;
   // Per style: how many designs, and the newest with a real photo (the seed's drawings don't count: the cut is line-drawn instead).
   const shots = silhouetteStyles.map((style, i) => {
     const r = styleShots[i];
@@ -103,6 +108,13 @@ export default async function HomePage({ params }: { params: Promise<{ lang: str
                   <ArrowRight className="rtl:-scale-x-100" aria-hidden />
                 </Link>
               </Button>
+              <Button asChild size="lg" variant="secondary" className="uppercase tracking-[0.14em]">
+                <Link href={tryOnSlug ? tryOnHref(tryOnSlug) : '/#try-on'}>
+                  <Sparkles className="text-gold-500" aria-hidden />
+                  {home.heroTryOn}
+                  <span className="rounded-full bg-accent-900 px-2 py-0.5 text-[10px] font-semibold tracking-[0.14em] text-gold-100">{home.newTag}</span>
+                </Link>
+              </Button>
               <Button asChild size="lg" variant="link" className="text-sm uppercase tracking-[0.14em] text-accent-800">
                 <Link href="#how-it-works">{home.heroSecondary}</Link>
               </Button>
@@ -114,6 +126,9 @@ export default async function HomePage({ params }: { params: Promise<{ lang: str
           <HeroShowcase designs={heroDesigns} />
         </div>
       </section>
+
+      {/* The virtual try-on, highlighted right after the hero (#try-on) */}
+      <TryOnFeature slug={tryOnSlug} />
 
       {/* Choose · Measure · Receive */}
       <ThreeSteps locale={locale} />

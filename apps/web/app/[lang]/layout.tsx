@@ -6,6 +6,7 @@ import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { LocaleProvider } from '@/components/i18n/locale-provider';
 import { ArchLoader } from '@/components/layout/arch-loader';
+import { TryOnBanner } from '@/components/layout/try-on-banner';
 import { Footer } from '@/components/layout/footer';
 import { Header } from '@/components/layout/header';
 import { RevealObserver } from '@/components/motion/reveal-observer';
@@ -80,6 +81,7 @@ export default async function RootLayout({ children, params }: Props) {
           <ArchLoader />
           <Providers>
             <Header />
+            <TryOnBanner />
             <main id="main" className="flex-1">
               {children}
             </main>
