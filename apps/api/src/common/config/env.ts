@@ -149,8 +149,12 @@ export function parseEnv(source: Record<string, string | undefined>): Env {
     throw new Error(`Invalid API environment. Fix these values in .env:\n${problems}`);
   }
   const env = result.data;
-  if (env.PAYMENT_PROVIDER === 'fake' && env.NODE_ENV === 'production') {
-    throw new Error('Invalid API environment. PAYMENT_PROVIDER=fake is for development only; use razorpay in production.');
+  // A live site may run without Razorpay only while ordering is closed ("Ordering coming soon"):
+  // nothing can be bought, and simulated payments stay off in production (payments.module.ts).
+  if (env.PAYMENT_PROVIDER === 'fake' && env.NODE_ENV === 'production' && env.ORDERING_ENABLED === true) {
+    throw new Error(
+      'Invalid API environment. PAYMENT_PROVIDER=fake is for development only; use razorpay in production (it is allowed only while ORDERING_ENABLED is off).',
+    );
   }
   if (env.PAYMENT_PROVIDER === 'razorpay') {
     const missing = (['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET'] as const).filter((k) => !env[k]);

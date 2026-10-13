@@ -6,6 +6,8 @@ export interface PaymentGateway {
   readonly keyId: string;
   /** 'test' for the development fake gateway: payments are simulated, never real. */
   readonly mode: 'razorpay' | 'test';
+  /** False on a live site without Razorpay (ordering closed): the "Simulate payment" routes are off. */
+  readonly canSimulate?: boolean;
   createOrder(input: { amountInPaise: number; receipt: string; notes: Record<string, string> }): Promise<{ id: string }>;
   /** Signature Razorpay Checkout returns to the client after a successful payment. */
   verifyPaymentSignature(providerOrderId: string, providerPaymentId: string, signature: string): boolean;

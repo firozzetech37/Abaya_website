@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { PaymentsService } from './application/payments.service';
 import { PAYMENT_GATEWAY, PAYMENT_REPOSITORY } from './application/ports/payments.ports';
 import { PrismaPaymentRepository } from './infrastructure/prisma-payment.repository';
-import { FakePaymentGateway } from './infrastructure/fake.gateway';
+import { ClosedPaymentGateway, FakePaymentGateway } from './infrastructure/fake.gateway';
 import { RazorpayGateway } from './infrastructure/razorpay.gateway';
 import { APP_CONFIG, type AppConfig } from '../../common/config/config.module';
 import { AdminPaymentsController, PaymentsController } from './interface/payments.controllers';
@@ -17,7 +17,12 @@ import { AdminPaymentsController, PaymentsController } from './interface/payment
     {
       provide: PAYMENT_GATEWAY,
       useFactory: (config: AppConfig, razorpay: RazorpayGateway, fake: FakePaymentGateway) =>
-        config.PAYMENT_PROVIDER === 'fake' ? fake : razorpay,
+        config.PAYMENT_PROVIDER !== 'fake'
+          ? razorpay
+          : // Live without Razorpay (only allowed while ordering is closed): nothing can be paid or simulated.
+            config.NODE_ENV === 'production'
+            ? new ClosedPaymentGateway()
+            : fake,
       inject: [APP_CONFIG, RazorpayGateway, FakePaymentGateway],
     },
     { provide: PAYMENT_REPOSITORY, useClass: PrismaPaymentRepository },

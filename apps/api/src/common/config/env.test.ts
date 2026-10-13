@@ -20,7 +20,10 @@ describe('parseEnv', () => {
     const { RAZORPAY_KEY_ID: _i, ...noKey } = base;
     expect(() => parseEnv(noKey)).toThrow(/RAZORPAY_KEY_ID/);
     expect(parseEnv({ ...noKey, PAYMENT_PROVIDER: 'fake' }).PAYMENT_PROVIDER).toBe('fake');
-    expect(() => parseEnv({ ...base, PAYMENT_PROVIDER: 'fake', NODE_ENV: 'production' })).toThrow(/development only/);
+    expect(() => parseEnv({ ...base, PAYMENT_PROVIDER: 'fake', NODE_ENV: 'production', ORDERING_ENABLED: 'true' })).toThrow(/development only/);
+    // While ordering is closed ("coming soon") a live site may run without Razorpay.
+    expect(parseEnv({ ...noKey, PAYMENT_PROVIDER: 'fake', NODE_ENV: 'production' })).toMatchObject({ PAYMENT_PROVIDER: 'fake', ORDERING_ENABLED: false });
+    expect(parseEnv({ ...noKey, PAYMENT_PROVIDER: 'fake', NODE_ENV: 'production', ORDERING_ENABLED: 'false' }).PAYMENT_PROVIDER).toBe('fake');
   });
 
   it('requires a Clerk secret key', () => {

@@ -71,7 +71,7 @@ export class PaymentsService {
 
   /** Development only: "Simulate payment" for a download (same capture path as Razorpay). */
   async simulateDownloadCapture(downloadId: string): Promise<void> {
-    if (this.gateway.mode !== 'test') throw new NotFoundError('Payment');
+    if (this.gateway.mode !== 'test' || this.gateway.canSimulate === false) throw new NotFoundError('Payment');
     await this.simulate(await this.payments.listForDownload(downloadId));
   }
 
@@ -86,7 +86,7 @@ export class PaymentsService {
    * Callers must check the order belongs to the customer (orders module does).
    */
   async simulateCapture(orderId: string): Promise<void> {
-    if (this.gateway.mode !== 'test') throw new NotFoundError('Payment');
+    if (this.gateway.mode !== 'test' || this.gateway.canSimulate === false) throw new NotFoundError('Payment');
     await this.simulate(await this.payments.listForOrder(orderId));
   }
 
