@@ -1,0 +1,16 @@
+{
+  "extends": "@abaya/config/tsconfig/react-native.json",
+  "compilerOptions": {},
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "nativewind-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "babel.config.js",
+    "metro.config.js",
+    "tailwind.config.js",
+    "eslint.config.mjs"
+  ]
+}

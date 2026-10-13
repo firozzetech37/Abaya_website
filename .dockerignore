@@ -1,0 +1,20 @@
+**/node_modules
+**/dist
+**/.next
+**/.expo
+**/.turbo
+**/coverage
+**/.env
+**/.env.*
+!.env.example
+# Other apps: keep only their manifests (the workspace lockfile lists them).
+apps/web/*
+!apps/web/package.json
+apps/admin/*
+!apps/admin/package.json
+apps/mobile/*
+!apps/mobile/package.json
+services
+.git
+.vscode
+.claude

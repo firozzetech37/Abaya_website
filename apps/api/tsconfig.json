@@ -1,0 +1,15 @@
+{
+  "extends": "@abaya/config/tsconfig/nestjs.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "types": [
+      "node",
+      "jest"
+    ],
+    "outDir": "./dist"
+  },
+  "include": [
+    "src",
+    "test"
+  ]
+}

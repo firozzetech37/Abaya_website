@@ -1,0 +1,33 @@
+{
+  "name": "abaya-platform",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Made-to-order abaya platform: customer web + app, admin panel with workshop stations, API and AI services",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "db:generate": "pnpm --filter @abaya/db generate",
+    "db:migrate": "pnpm --filter @abaya/db migrate",
+    "db:studio": "pnpm --filter @abaya/db studio",
+    "db:seed": "pnpm --filter @abaya/db seed",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "db:counts": "pnpm --filter @abaya/db counts",
+    "test:e2e": "pnpm --filter @abaya/api test:e2e",
+    "ai:setup": "cd services/ai && python3 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install -e '.[dev]'",
+    "ai:dev": "cd services/ai && .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --env-file ../../.env",
+    "ai:test": "cd services/ai && .venv/bin/pytest -q"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "turbo": "^2.3.0",
+    "typescript": "^5.6.3"
+  }
+}

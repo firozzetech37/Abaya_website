@@ -1,0 +1,32 @@
+[project]
+name = "abaya-ai"
+version = "1.0.0"
+description = "Abaya AI service: image fingerprints for duplicate detection and tag suggestions (CLIP)"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "httpx>=0.27",
+  "pillow>=11",
+  "imagehash>=4.3",
+  "numpy>=2",
+  "torch>=2.5",
+  "open_clip_torch>=2.29",
+  "python-dotenv>=1",
+]
+
+[project.optional-dependencies]
+# AI_TAGGER=claude (later): Claude vision fills the tag form.
+claude = ["anthropic>=0.40"]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]

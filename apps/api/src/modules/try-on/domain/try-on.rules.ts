@@ -1,0 +1,315 @@
+/**
+ * Website AI preview and try-on rules (plain TypeScript): which design photo is edited, which
+ * choices go in the prompt, the FASHN request, and what the customer is told when it fails.
+ */
+import {
+  bodyBuild,
+  type CustomerPreviewKind,
+  madeToMeasurePrompt,
+  modelLikeMePrompt,
+  type OptionGroupCode,
+  type PreviewChoice,
+  type PreviewPlan,
+  planPreview,
+  type TryOnBody,
+  type TryOnMode,
+  TRYON_RETENTION_DAYS,
+} from '@abaya/contracts';
+
+/** At most this many customer requests run at FASHN at once (the designers' AI Catalog shares the account). */
+export const CUSTOMER_FASHN_CONCURRENCY = 3;
+export const POLL_INTERVAL_MS = 3_000;
+export const JOB_TIMEOUT_MS = 5 * 60_000;
+export const MAX_ATTEMPTS = 3;
+export const INPUT_URL_TTL_SECONDS = 3_600;
+/** The design photo FASHN gets for a try-on: plenty for its 1k output, a fraction of a 7–10 MB original. */
+export const TRYON_SOURCE_SIDE = 2048;
+/** Images Gemini gets for the try-on accuracy check: embroidery stays readable, the upload stays small. */
+export const TRYON_CHECK_SIDE = 1536;
+export const retryDelayMs = (attempt: number): number => 10_000 * attempt;
+
+export const ENDPOINT: Record<CustomerPreviewKind, string> = { PREVIEW: 'edit', TRYON: 'tryon-max' };
+
+/**
+ * The try-on instruction and what the result must show. Only the abaya moves across: never
+ * the product model's bag, shoes or headscarf; her face, body, pose, headscarf and background stay.
+ */
+export interface TryOnPlan {
+  /** One prompt per FASHN step. */
+  steps: string[];
+  /** The FASHN endpoint of each step. */
+  endpoints: string[];
+  checks: PreviewCheck[];
+}
+
+/**
+ * The FASHN steps of a try-on:
+ * - PHOTO: tryon-max on her photo; with her measurements, then an edit to the made-to-measure
+ *   length and sleeves.
+ * - MODEL ("a model like me"): model-create with her build, then tryon-max on that model.
+ */
+export function tryOnPlan(style: string, options: { mode?: TryOnMode; body?: TryOnBody | null } = {}): TryOnPlan {
+  const shape = style.toLowerCase().replace(/_/g, ' ');
+  const mode = options.mode ?? 'PHOTO';
+  const body = options.body ?? null;
+  const dress = (who: string) =>
+    [
+      `Dress ${who} in this ${shape} abaya, full length to her ankles, worn open or closed exactly as shown.`,
+      'Transfer ONLY the abaya: do not copy the product model’s handbag, shoes, jewellery or headscarf.',
+      `Keep the abaya’s ${shape} silhouette and every embroidery panel, border and motif exactly: same position, size, pattern and colours.`,
+      'Keep her face, skin tone, body shape, height, pose, hands, her own headscarf or hair, and the background exactly as in her photo.',
+      'It must look like a real photograph of her: natural drape and folds that follow her body, real fabric texture.',
+    ].join(' ');
+  const garmentChecks = (result: string, original: string): PreviewCheck[] => [
+    { text: `The abaya in ${result} has the same ${shape} silhouette as the abaya in ${original}.`, critical: true },
+    { text: `Every embroidery panel, border or motif of the abaya in ${original} is visible on the abaya in ${result}, in the same place and size.`, critical: true },
+    { text: `The abaya in ${result} is the same colour as in ${original}.`, critical: true },
+    { text: `The abaya in ${result} is full length, reaching her ankles.`, critical: false },
+    { text: `She is not holding or wearing the product model’s handbag or shoes from ${original}.`, critical: false },
+  ];
+
+  if (mode === 'MODEL') {
+    if (!body) throw new Error('A model try-on needs her measurements.');
+    const { height, build } = bodyBuild(body);
+    return {
+      steps: [modelLikeMePrompt(body), dress('the woman in the photo')],
+      endpoints: [ENDPOINT_MODEL, ENDPOINT.TRYON],
+      checks: [
+        ...garmentChecks('image 2', 'image 1'),
+        { text: `The woman in image 2 is ${height} with ${build}, wearing a hijab.`, critical: false },
+      ],
+    };
+  }
+  const checks: PreviewCheck[] = [
+    { text: 'The woman in image 3 is clearly the same person as in image 2: same face, skin tone, body shape, pose and background.', critical: true },
+    ...garmentChecks('image 3', 'image 1'),
+  ];
+  if (!body) return { steps: [dress('the woman in her photo')], endpoints: [ENDPOINT.TRYON], checks };
+  return {
+    steps: [dress('the woman in her photo'), madeToMeasurePrompt(body, style)],
+    endpoints: [ENDPOINT.TRYON, ENDPOINT_EDIT],
+    checks: [...checks, { text: 'In image 3 the hem falls just above the floor and the sleeves end at her wrists.', critical: false }],
+  };
+}
+
+const ENDPOINT_MODEL = 'model-create';
+const ENDPOINT_EDIT = 'edit';
+
+/** Kept for rows made before the try-on plan (one instruction). */
+export const TRYON_PROMPT = tryOnPlan('abaya').steps[0]!;
+
+/** Start of the current day in India (UTC+5:30), for daily limits. */
+export function startOfIndiaDay(now: Date): Date {
+  const offset = 330 * 60_000;
+  const local = new Date(now.getTime() + offset);
+  local.setUTCHours(0, 0, 0, 0);
+  return new Date(local.getTime() - offset);
+}
+
+export const tryOnExpiry = (now: Date): Date => new Date(now.getTime() + TRYON_RETENTION_DAYS * 24 * 60 * 60_000);
+
+export interface SubjectImage {
+  storagePath: string;
+  colourValueId: string | null;
+}
+export interface SubjectOption {
+  id: string;
+  groupCode: OptionGroupCode;
+  name: string;
+  description: string | null;
+  isDefault: boolean;
+}
+
+/**
+ * The photo to start from: the chosen colour's own photo when there is one, else the main
+ * photo. `showsColour` says whether that photo already shows the chosen colour.
+ */
+export function sourceImage(
+  images: SubjectImage[],
+  options: SubjectOption[],
+  colourId: string | null,
+): { image: SubjectImage; showsColour: boolean } | null {
+  const ofColour = colourId ? images.find((i) => i.colourValueId === colourId) : undefined;
+  if (ofColour) return { image: ofColour, showsColour: true };
+  const main = images.find((i) => !i.colourValueId) ?? images[0];
+  if (!main) return null;
+  // The main photoshoot shows the design's default colour.
+  const defaultColour = options.find((o) => o.groupCode === 'COLOUR' && o.isDefault)?.id ?? null;
+  return { image: main, showsColour: !colourId || colourId === defaultColour };
+}
+
+/**
+ * What the edit must change: every chosen value that the photo does not already show
+ * (the photo shows the design's defaults). Colour only when the photo is another colour.
+ */
+export function changesToShow(
+  options: SubjectOption[],
+  selectedIds: string[],
+  showsColour: boolean,
+): PreviewChoice[] {
+  const chosen = new Set(selectedIds);
+  return options
+    .filter((o) => chosen.has(o.id) && !o.isDefault)
+    .filter((o) => o.groupCode !== 'COLOUR' || !showsColour)
+    .map((o) => ({ group: o.groupCode, name: o.name, description: o.description }));
+}
+
+/** The steps and checks for a preview: the chosen colour (or the default one) names the accessories. */
+export function previewPlan(style: string, options: SubjectOption[], selectedIds: string[], changes: PreviewChoice[], request?: string | null): PreviewPlan {
+  const colours = options.filter((o) => o.groupCode === 'COLOUR');
+  const colour = colours.find((o) => selectedIds.includes(o.id)) ?? colours.find((o) => o.isDefault);
+  return planPreview({ style, colourName: colour?.name ?? 'same', choices: changes, request });
+}
+
+// ───────────── Accuracy check ─────────────
+
+/** A preview that fails the check is remade once with the problems named; then it is refused. */
+export const MAX_CHECK_RETRIES = 1;
+
+/** What a customer's free-text wish may do to a preview. Gemini answers before the image model is called. */
+export function requestQuestion(request: string): string {
+  return [
+    'A customer is previewing an abaya (a long modest garment) and typed a wish for the AI picture. The picture may ONLY change surface things: the fabric look or sheen, the fabric colour, the colour of the existing embroidery or pattern thread, the background, the setting, the lighting, the time of day or the mood.',
+    'It must NOT change the design: no changes to the cut, silhouette, length, sleeves, neckline, closure, the pattern or print itself, embroidery, lace, borders, trims, motifs, adding or removing any element (accessories, bags, jewellery, props held by the model), the model’s body, face or pose, or any text/logo. Parts that are offensive, about nudity, or unrelated to the picture are not allowed either.',
+    'Split the wish: keep the allowed parts as one clean sentence in the language of the wish (English or Arabic), and list each part you left out in a few words. If nothing is allowed, "kept" is an empty string.',
+    `Wish: <<<${request}>>>`,
+    'Answer with JSON only: {"kept": "the allowed parts, reworded as one clear instruction for an image editor", "leftOut": ["each part left out"]}.',
+  ].join('\n\n');
+}
+export const REQUEST_NOT_ALLOWED = 'The preview can change the fabric, colours, background and lighting. The design itself stays as our designer made it. Please rephrase your wish.';
+/** Stored in the preview's `choices` so the result can say what was used and what was left out. */
+export const WORDS_LINE = 'In her words: ';
+export const LEFT_OUT_LINE = 'Left out: ';
+export const REQUEST_UNAVAILABLE = 'Wishes in your own words are not available right now. Please use the options instead.';
+export const INACCURATE_TRYON_MESSAGE =
+  'We couldn’t make an accurate try-on with this photo. Please try a different photo: standing, facing the camera, whole body visible, good light.';
+export const INACCURATE_MESSAGE =
+  'We couldn’t make an accurate preview of this combination. Your abaya will still be made exactly to your choices.';
+
+export type PreviewCheck = { text: string; critical: boolean };
+export type CheckAnswer = { ok: boolean; problem: string };
+
+/** The question Gemini answers about the original photo (first image) and the preview (second). */
+export function checkQuestion(checks: PreviewCheck[]): string {
+  const list = checks.map((c, i) => `${i + 1}. ${c.text}`).join('\n');
+  return [
+    'You are a strict fashion quality checker. Image 1 is the original product photo of an abaya. Image 2 is an AI-edited version that should show the customer’s chosen changes.',
+    'For each statement below, decide whether it is true for image 2 (compare with image 1 where needed). Be strict about embroidery: if embroidery panels, borders or motifs from image 1 are missing, moved, much smaller or turned into a different pattern in image 2, that is false.',
+    list,
+    'Answer with JSON only: {"results":[{"n":1,"ok":true,"problem":""}, ...]} with one entry per statement; "problem" says in a few words what is wrong when ok is false.',
+  ].join('\n\n');
+}
+
+/**
+ * Pass when every critical check is true (silhouette, embroidery, colour) and at most one
+ * detail is off. Missing answers count as passed (the checker could not tell).
+ */
+export function judge(checks: PreviewCheck[], answers: CheckAnswer[]): { pass: boolean; problems: string[] } {
+  const failed = checks
+    .map((c, i) => ({ check: c, answer: answers[i] }))
+    .filter((x) => x.answer && !x.answer.ok);
+  const problems = failed.map((x) => `${x.check.text.replace(/\.$/, '')}: ${x.answer!.problem || 'not shown'}.`);
+  const criticalFailed = failed.some((x) => x.check.critical);
+  return { pass: !criticalFailed && failed.length <= 1, problems };
+}
+
+/** "Fabric: Crepe" lines for the admin list. */
+export function choiceLines(options: SubjectOption[], selectedIds: string[]): string[] {
+  const label = (g: OptionGroupCode) => g.charAt(0) + g.slice(1).toLowerCase().replace('_', '-');
+  const chosen = new Set(selectedIds);
+  return options.filter((o) => chosen.has(o.id)).map((o) => `${label(o.groupCode)}: ${o.name}`);
+}
+
+/**
+ * The `inputs` of POST /v1/run for one step (always 1K fast, one image). `source` is the design
+ * photo (or her customised preview), `working` the previous step's picture, `person` her photo.
+ */
+export function fashnInputs(
+  endpoint: string,
+  prompt: string,
+  urls: { source: string; working?: string; person?: string },
+): Record<string, unknown> {
+  const common = { resolution: '1k', generation_mode: 'fast', num_images: 1, output_format: 'png' };
+  // Try-on pictures come back as JPEG: smaller to download and watermark (the shown picture is a JPEG anyway).
+  if (endpoint === ENDPOINT_MODEL) return { prompt, aspect_ratio: '4:5', ...common, output_format: 'jpeg' };
+  if (endpoint === ENDPOINT.TRYON) {
+    // Her photo, or (a model like me) the model the previous step made.
+    const model = urls.person ?? urls.working;
+    if (!model) throw new Error('A try-on needs a photo of the person.');
+    return { product_image: urls.source, model_image: model, prompt, ...common, output_format: 'jpeg' };
+  }
+  return { image: urls.working ?? urls.source, prompt, ...common };
+}
+
+/** The Gemini question for "a model like me": image 1 the abaya, image 2 the result. */
+export function modelTryOnCheckQuestion(checks: PreviewCheck[]): string {
+  const list = checks.map((c, i) => `${i + 1}. ${c.text}`).join('\n');
+  return [
+    'You are a strict fashion quality checker for a virtual try-on on an AI model. Image 1 is the abaya product photo. Image 2 is the AI result that should show a model wearing the abaya from image 1.',
+    'For each statement below decide whether it is true. Be strict about embroidery (missing, moved or redrawn embroidery is false).',
+    list,
+    'Answer with JSON only: {"results":[{"n":1,"ok":true,"problem":""}, ...]} with one entry per statement; "problem" says in a few words what is wrong when ok is false.',
+  ].join('\n\n');
+}
+
+const TEMPORARY = new Set(['ThirdPartyError', 'UnavailableError', 'PipelineError', 'InternalServerError']);
+export const isTemporaryFailure = (name: string): boolean => TEMPORARY.has(name);
+
+/** What the customer reads; never the provider's own text. */
+export function customerError(name: string): string {
+  switch (name) {
+    case 'ImageLoadError':
+    case 'InputValidationError':
+      return 'We could not read the photo. Please use a clear JPEG or PNG photo, standing, full length.';
+    case 'ContentModerationError':
+      return 'We could not make this picture. Please try a different photo.';
+    case 'OutOfCredits':
+    case 'UnauthorizedAccess':
+      return 'AI pictures are not available right now. Please try again later.';
+    case 'Timeout':
+      return 'This took too long. Please try again.';
+    default:
+      return 'The picture could not be made. Please try again.';
+  }
+}
+
+/** Gemini's question for a try-on: image 1 the abaya, image 2 her photo, image 3 the result. */
+export function tryOnCheckQuestion(checks: PreviewCheck[]): string {
+  const list = checks.map((c, i) => `${i + 1}. ${c.text}`).join('\n');
+  return [
+    'You are a strict fashion quality checker for a virtual try-on. Image 1 is the abaya product photo. Image 2 is the customer’s own photo. Image 3 is the AI try-on result that should show the customer from image 2 wearing the abaya from image 1.',
+    'For each statement below decide whether it is true. Be strict about the person (it must be the same woman, not a different face or body) and about embroidery (missing, moved or redrawn embroidery is false).',
+    list,
+    'Answer with JSON only: {"results":[{"n":1,"ok":true,"problem":""}, ...]} with one entry per statement; "problem" says in a few words what is wrong when ok is false.',
+  ].join('\n\n');
+}
+
+// ───────────── Her photo, checked before any credit is spent ─────────────
+
+export const PHOTO_REASONS = ['ok', 'not_full_body', 'multiple_people', 'not_standing', 'too_dark', 'no_person', 'face_hidden'] as const;
+export type PhotoReason = (typeof PHOTO_REASONS)[number];
+
+export const PHOTO_QUESTION = [
+  'You check a customer photo for a virtual clothing try-on. A good photo shows exactly one woman, standing, facing the camera, with her body visible at least from head to knees (ideally to the feet), in reasonable light.',
+  `Answer with JSON only: {"ok":true|false,"reason":"${PHOTO_REASONS.join('|')}"}. Use "ok" only when the photo is suitable. A headscarf or hijab is fine.`,
+].join('\n\n');
+
+/** What she is told when her photo will not work (no credit is used). */
+export function photoTip(reason: string): string {
+  switch (reason) {
+    case 'not_full_body':
+      return 'Please use a photo where your whole body is visible, at least from head to knees.';
+    case 'multiple_people':
+      return 'Please use a photo with only you in it.';
+    case 'not_standing':
+      return 'Please use a photo where you are standing straight and facing the camera.';
+    case 'too_dark':
+      return 'This photo is too dark. Please use one taken in good light.';
+    case 'face_hidden':
+      return 'Please use a photo where your face is visible and facing the camera.';
+    case 'no_person':
+      return 'We could not find a person in this photo. Please use a photo of yourself, standing.';
+    default:
+      return 'This photo will not work well for a try-on. Please use one where you stand facing the camera, whole body visible, in good light.';
+  }
+}

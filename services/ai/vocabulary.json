@@ -1,0 +1,121 @@
+{
+  "$comment": "Tags the AI may suggest. Edit freely: `tag` is what gets saved on a design (lowercase, dashes, max 30 characters), `label` is shown in the admin panel, `text` describes the look to the CLIP model. Single-choice groups suggest at most one tag; multi-choice groups compare each tag against `negative` and suggest at most `max_tags` (default 3). `min_score` (0-1) is how sure the model must be before a tag is suggested. Restart the AI service after editing.",
+  "version": "2026-09-28",
+  "prompt_templates": ["a photo of {}", "a product photo of {}", "a fashion illustration of {}"],
+  "groups": [
+    {
+      "code": "style",
+      "label": "Style",
+      "multi": false,
+      "min_score": 0.5,
+      "tags": [
+        { "tag": "closed", "label": "Closed", "style": "CLOSED", "text": "a closed abaya with long straight sleeves and no front opening" },
+        { "tag": "open-front", "label": "Open front", "style": "OPEN_FRONT", "text": "an open front abaya worn like a long coat over a dress" },
+        { "tag": "butterfly", "label": "Butterfly", "style": "BUTTERFLY", "text": "a butterfly abaya with very wide wing-like sleeves joined to the body" },
+        { "tag": "kimono", "label": "Kimono", "style": "KIMONO", "text": "a kimono style abaya with wide square sleeves and a wrap front" },
+        { "tag": "bisht", "label": "Bisht", "style": "BISHT", "text": "a bisht style abaya cloak with gold trim along the front edges" },
+        { "tag": "kaftan", "label": "Kaftan", "style": "KAFTAN", "text": "a loose kaftan abaya with a round neckline" }
+      ]
+    },
+    {
+      "code": "colour",
+      "label": "Colour",
+      "multi": false,
+      "min_score": 0.4,
+      "tags": [
+        { "tag": "black", "label": "Black", "text": "a black abaya" },
+        { "tag": "navy", "label": "Navy", "text": "a navy blue abaya" },
+        { "tag": "grey", "label": "Grey", "text": "a grey abaya" },
+        { "tag": "beige", "label": "Beige", "text": "a beige abaya" },
+        { "tag": "brown", "label": "Brown", "text": "a brown abaya" },
+        { "tag": "maroon", "label": "Maroon", "text": "a maroon red abaya" },
+        { "tag": "olive-green", "label": "Olive green", "text": "an olive green abaya" },
+        { "tag": "emerald", "label": "Emerald", "text": "an emerald green abaya" },
+        { "tag": "dusty-pink", "label": "Dusty pink", "text": "a dusty pink abaya" },
+        { "tag": "lilac", "label": "Lilac", "text": "a lilac purple abaya" },
+        { "tag": "white", "label": "White", "text": "a white abaya" },
+        { "tag": "sky-blue", "label": "Sky blue", "text": "a light sky blue abaya" }
+      ]
+    },
+    {
+      "code": "fabric",
+      "label": "Fabric look",
+      "multi": false,
+      "min_score": 0.65,
+      "tags": [
+        { "tag": "nida", "label": "Nida", "text": "an abaya made of matte flowing nida fabric" },
+        { "tag": "crepe", "label": "Crepe", "text": "an abaya made of textured crepe fabric" },
+        { "tag": "chiffon", "label": "Chiffon", "text": "an abaya made of sheer layered chiffon" },
+        { "tag": "satin", "label": "Satin", "text": "an abaya made of shiny satin fabric" },
+        { "tag": "linen", "label": "Linen", "text": "an abaya made of natural linen fabric" },
+        { "tag": "velvet", "label": "Velvet", "text": "an abaya made of soft velvet" },
+        { "tag": "jersey", "label": "Jersey", "text": "an abaya made of stretchy jersey knit" }
+      ]
+    },
+    {
+      "code": "sleeve",
+      "label": "Sleeves",
+      "multi": false,
+      "min_score": 0.55,
+      "tags": [
+        { "tag": "wide-sleeves", "label": "Wide sleeves", "text": "an abaya with wide loose sleeves" },
+        { "tag": "cuffed-sleeves", "label": "Cuffed sleeves", "text": "an abaya with buttoned cuffs at the wrists" },
+        { "tag": "bell-sleeves", "label": "Bell sleeves", "text": "an abaya with flared bell sleeves" },
+        { "tag": "fitted-sleeves", "label": "Fitted sleeves", "text": "an abaya with narrow fitted sleeves" }
+      ]
+    },
+    {
+      "code": "embellishment",
+      "label": "Embellishment",
+      "multi": true,
+      "min_score": 0.66,
+      "negative": "a plain abaya with no decoration",
+      "tags": [
+        { "tag": "embroidery", "label": "Embroidery", "text": "an abaya decorated with embroidery" },
+        { "tag": "lace-trim", "label": "Lace trim", "text": "an abaya with lace trim" },
+        { "tag": "pearl-work", "label": "Pearl work", "text": "an abaya decorated with pearls" },
+        { "tag": "beading", "label": "Beading", "text": "an abaya decorated with beads" },
+        { "tag": "sequins", "label": "Sequins", "text": "an abaya with sparkling sequins" },
+        { "tag": "piping", "label": "Piping", "text": "an abaya with contrast piping along the edges" },
+        { "tag": "gold-trim", "label": "Gold trim", "text": "an abaya with gold trim" }
+      ]
+    },
+    {
+      "code": "closure",
+      "label": "Closure",
+      "multi": false,
+      "min_score": 0.5,
+      "tags": [
+        { "tag": "zip-front", "label": "Zip front", "text": "an abaya with a zip down the front" },
+        { "tag": "button-front", "label": "Button front", "text": "an abaya with buttons down the front" },
+        { "tag": "belted", "label": "Belted", "text": "an abaya with a belt tied at the waist" },
+        { "tag": "pull-on", "label": "Pull-on", "text": "an abaya with no fastenings that is pulled over the head" }
+      ]
+    },
+    {
+      "code": "pattern",
+      "label": "Pattern",
+      "multi": false,
+      "min_score": 0.6,
+      "tags": [
+        { "tag": "solid", "label": "Solid", "text": "a solid single colour abaya" },
+        { "tag": "printed", "label": "Printed", "text": "an abaya with a printed pattern" },
+        { "tag": "striped", "label": "Striped", "text": "an abaya with stripes" },
+        { "tag": "colour-block", "label": "Colour block", "text": "an abaya with contrasting colour blocks" }
+      ]
+    },
+    {
+      "code": "occasion",
+      "label": "Occasion",
+      "multi": true,
+      "min_score": 0.66,
+      "negative": "an abaya",
+      "tags": [
+        { "tag": "everyday", "label": "Everyday", "text": "a simple everyday abaya" },
+        { "tag": "festive", "label": "Festive / Eid", "text": "a festive abaya for eid celebrations" },
+        { "tag": "occasion-wear", "label": "Occasion wear", "text": "an elegant abaya for weddings and evening events" },
+        { "tag": "workwear", "label": "Workwear", "text": "a smart abaya for the office" }
+      ]
+    }
+  ]
+}

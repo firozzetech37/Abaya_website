@@ -1,0 +1,1348 @@
+// Abaya Platform — database schema (Supabase Postgres)
+// Source of truth for tables. Rules and state machines: docs/domain-model.md
+// Money: integer paise. Lengths: centimetres, one decimal.
+
+generator client {
+  provider        = "prisma-client-js"
+  // Load related rows (images, options…) in the same query instead of one trip each:
+  // the database is far away, so every round trip costs 0.2–1 s.
+  previewFeatures = ["relationJoins"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // Supabase pooler, port 6543, ?pgbouncer=true
+  directUrl = env("DIRECT_URL") // Supabase session connection, port 5432 (migrations)
+}
+
+// ───────────────────────────── Enums ─────────────────────────────
+
+enum Role {
+  SUPER_ADMIN
+  CATALOG_MANAGER
+  PRODUCTION_MANAGER
+  DESIGNER
+  QC
+  SUPPORT
+  MAKER
+  CUSTOMER
+  PATTERN_TECHNICIAN
+  CUTTER
+  FINISHER
+  LOGISTICS
+}
+
+enum ConsentPurpose {
+  TERMS
+  PRIVACY
+  MARKETING
+  MEASUREMENT_PHOTOS
+  WHATSAPP_UPDATES // order updates on WhatsApp (business-initiated messages need opt-in)
+}
+
+enum DevicePlatform {
+  ANDROID
+  IOS
+}
+
+enum ClientApp {
+  CUSTOMER
+  MAKER
+}
+
+enum ReferenceSource {
+  PINTEREST
+  FASHION_API
+  MANUAL_UPLOAD
+}
+
+enum ReferenceStatus {
+  IMPORTED
+  IN_REVIEW
+  NEEDS_DESIGN
+  DESIGNED
+  REJECTED
+}
+
+enum DesignSource {
+  UPLOAD
+  AI_GENERATED
+}
+
+enum GenerationStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum DesignStatus {
+  DRAFT
+  IN_REVIEW
+  CHANGES_REQUESTED
+  PRICED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum AbayaStyle {
+  CLOSED
+  OPEN_FRONT
+  BUTTERFLY
+  KIMONO
+  BISHT
+  KAFTAN
+  OTHER
+}
+
+enum OptionGroupCode {
+  FABRIC
+  COLOUR
+  /// The colour of the embroidery, borders and motifs (separate from the fabric colour)
+  PATTERN_COLOUR
+  SLEEVE
+  EMBELLISHMENT
+  CLOSURE
+  ADD_ON
+}
+
+enum SelectionType {
+  SINGLE
+  MULTI
+}
+
+enum SizeBandCode {
+  XS
+  S
+  M
+  L
+  XL
+  XXL
+  CUSTOM
+}
+
+enum MeasurementSource {
+  MANUAL
+  PHOTO_SCAN
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum ProductionStage {
+  PLACED
+  SPEC_APPROVED
+  ASSIGNED // old flow; items were moved to PATTERN (kept for history)
+  CUTTING
+  STITCHING
+  QC
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REMAKE
+  PATTERN
+  FINISHING
+  PACKED
+  ON_HOLD
+}
+
+enum StaffInviteStatus {
+  PENDING
+  ACCEPTED
+  CANCELLED
+}
+
+enum PaymentProvider {
+  RAZORPAY
+}
+
+enum PaymentStatus {
+  CREATED
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSED
+  FAILED
+}
+
+enum TechPackStatus {
+  DRAFT
+  APPROVED
+}
+
+enum QcResult {
+  PASS
+  FAIL
+}
+
+enum PayoutStatus {
+  PENDING
+  PAID
+}
+
+enum ShipmentStatus {
+  PENDING
+  SHIPPED
+  IN_TRANSIT
+  DELIVERED
+  RETURNED
+}
+
+enum NotificationChannel {
+  EMAIL
+  WHATSAPP
+  PUSH
+  SMS
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+enum ImportJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+// ───────────────────────────── Identity ─────────────────────────────
+
+model User {
+  /// When this user last used the site while signed in ("last seen", updated at most every 10 minutes).
+  lastActiveAt DateTime?
+  id           String    @id @default(uuid()) @db.Uuid
+  authUserId   String    @unique // Clerk user id, e.g. "user_2abc…" (login provider)
+  email        String?   @unique
+  phone        String?   @unique
+  name         String?
+  roles        Role[]    @default([CUSTOMER])
+  isActive     Boolean   @default(true)
+  deletedAt    DateTime? // soft delete for DPDP erasure requests (PII scrubbed)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  addresses           Address[]
+  consents            ConsentRecord[]
+  measurementProfiles MeasurementProfile[]
+  cart                Cart?
+  wishlist            WishlistItem[]
+  orders              Order[]
+  designsCreated      Design[]                @relation("DesignDesigner")
+  itemsClaimed        OrderItem[]             @relation("OrderItemClaimer")
+  patternsCreated     Pattern[]               @relation("PatternCreatedBy")
+  patternsConfirmed   Pattern[]               @relation("PatternConfirmedBy")
+  cuttingsDone        CuttingRecord[]         @relation("CuttingCutBy")
+  stitchingsDone      StitchingRecord[]       @relation("StitchingBy")
+  workshopJobs        WorkshopAssignment[]    @relation("WorkshopAssignee")
+  designGenerations   DesignGeneration[]      @relation("GenerationDesigner")
+  designDownloads     DesignDownload[]
+  catalogJobs         CatalogJob[]            @relation("CatalogJobCreator")
+  catalogModels       CatalogModelProfile[]   @relation("CatalogModelCreator")
+  catalogPresets      CatalogPromptPreset[]
+  customerPreviews    CustomerPreview[]
+  workshopJobsSet     WorkshopAssignment[]    @relation("WorkshopAssigner")
+  staffInvitesSent    StaffInvite[]           @relation("StaffInviteInviter")
+  referencesAssigned  Reference[]             @relation("ReferenceAssignee")
+  maker               Maker?
+  auditLogs           AuditLog[]
+  notifications       Notification[]
+  devices             DeviceToken[]
+  stageEvents         OrderStageEvent[]
+  techPacksApproved   TechPack[]
+  qcChecks            QcCheck[]
+  refundsCreated      Refund[]
+  previewAccess       CustomerPreviewAccess[]
+  orderingWaitlist    OrderingWaitlist?
+
+  @@index([roles])
+}
+
+model Address {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  fullName  String
+  phone     String
+  line1     String
+  line2     String?
+  landmark  String?
+  city      String
+  state     String
+  pincode   String
+  country   String   @default("IN")
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model ConsentRecord {
+  id        String         @id @default(uuid()) @db.Uuid
+  userId    String         @db.Uuid
+  purpose   ConsentPurpose
+  granted   Boolean
+  version   String // policy version the user saw, e.g. "2026-10-01"
+  ip        String?
+  createdAt DateTime       @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+}
+
+// ───────────────────────────── Catalog ─────────────────────────────
+
+model Reference {
+  id                 String          @id @default(uuid()) @db.Uuid
+  source             ReferenceSource
+  externalId         String? // pin id / product id from the source
+  sourceUrl          String? // must be kept and linked for Pinterest
+  imagePath          String // Supabase Storage path (private bucket) or external URL
+  title              String?
+  tags               String[]
+  licenseNote        String? // what we are allowed to do with this image
+  status             ReferenceStatus @default(IMPORTED)
+  reviewNotes        String?
+  assignedDesignerId String?         @db.Uuid
+  importJobId        String?         @db.Uuid
+  importedAt         DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  assignedDesigner User?      @relation("ReferenceAssignee", fields: [assignedDesignerId], references: [id], onDelete: SetNull)
+  importJob        ImportJob? @relation(fields: [importJobId], references: [id], onDelete: SetNull)
+  designs          Design[]
+
+  @@unique([source, externalId])
+  @@index([status])
+}
+
+model Design {
+  id                     String       @id @default(uuid()) @db.Uuid
+  slug                   String       @unique
+  name                   String
+  description            String?
+  style                  AbayaStyle
+  status                 DesignStatus @default(DRAFT)
+  tags                   String[]
+  basePriceInPaise       Int? // required before PRICED
+  makingCostInPaise      Int? // internal only, never sent to customers
+  leadTimeDays           Int          @default(12)
+  reviewNotes            String?
+  designerId             String?      @db.Uuid
+  referenceId            String?      @db.Uuid
+  /// How the design was made: uploaded photos, or picked from AI variations in the Studio.
+  source                 DesignSource @default(UPLOAD)
+  /// The designer confirmed the design is original (required to submit for review).
+  originalityConfirmedAt DateTime?
+  /// A Pinterest pin (link only, never the image) the designer looked at for ideas.
+  inspirationUrl         String?
+  /// AI designs: snapshot of the generation (prompt, model, generationId, createdAt) for review.
+  aiGeneration           Json?
+  submittedAt            DateTime?
+  approvedAt             DateTime?
+  /// Customers may buy the HD design images (no watermark) to download.
+  downloadEnabled        Boolean      @default(false)
+  /// Price of the HD download; null = the default (DEFAULT_DOWNLOAD_PRICE_IN_PAISE).
+  downloadPriceInPaise   Int?
+  publishedAt            DateTime?
+  archivedAt             DateTime?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  designer    User?          @relation("DesignDesigner", fields: [designerId], references: [id], onDelete: SetNull)
+  reference   Reference?     @relation(fields: [referenceId], references: [id], onDelete: SetNull)
+  images      DesignImage[]
+  options     DesignOption[]
+  collections Collection[]
+  cartItems   CartItem[]
+  wishlistBy  WishlistItem[]
+  orderItems  OrderItem[]
+
+  @@index([status, publishedAt])
+  @@index([style])
+}
+
+model DesignImage {
+  id                String   @id @default(uuid()) @db.Uuid
+  designId          String   @db.Uuid
+  storagePath       String // path in the public "designs" bucket once published
+  alt               String?
+  width             Int?
+  height            Int?
+  sortOrder         Int      @default(0)
+  isPrimary         Boolean  @default(false)
+  /// Raised whenever the customer web preview is remade, so its URL changes (?v=) and caches refresh.
+  previewVersion    Int      @default(0)
+  /// Which version of the web-preview code made the public copy (1 = invisible watermark); older ones are remade at start-up.
+  previewGeneration Int      @default(0)
+  /// The colour this photo shows (a COLOUR option value); null for the main photoshoot, shown for every colour.
+  colourValueId     String?  @db.Uuid
+  /// A close-up detail shot (fabric, embroidery, a hem…): shown in the home page's craftsmanship gallery.
+  isDetail          Boolean  @default(false)
+  createdAt         DateTime @default(now())
+
+  design      Design       @relation(fields: [designId], references: [id], onDelete: Cascade)
+  colourValue OptionValue? @relation(fields: [colourValueId], references: [id], onDelete: SetNull)
+
+  @@index([designId, sortOrder])
+  @@index([colourValueId])
+}
+
+/// Which option values a design allows, with an optional per-design surcharge override.
+model DesignOption {
+  id                       String   @id @default(uuid()) @db.Uuid
+  designId                 String   @db.Uuid
+  optionValueId            String   @db.Uuid
+  surchargeOverrideInPaise Int?
+  isDefault                Boolean  @default(false)
+  createdAt                DateTime @default(now())
+
+  design      Design      @relation(fields: [designId], references: [id], onDelete: Cascade)
+  optionValue OptionValue @relation(fields: [optionValueId], references: [id], onDelete: Restrict)
+
+  @@unique([designId, optionValueId])
+  @@index([optionValueId])
+}
+
+model Collection {
+  id          String   @id @default(uuid()) @db.Uuid
+  slug        String   @unique
+  name        String // e.g. "Ramadan 2027", "Everyday Nida"
+  description String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  /// Short looping video behind the collection on the home page (public bucket), uploaded in the admin.
+  videoPath   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  designs Design[]
+}
+
+/// A message in the website's top bar (English + Arabic), managed in the admin; shown while active and within its dates.
+model Announcement {
+  id        String    @id @default(uuid()) @db.Uuid
+  textEn    String
+  textAr    String
+  /// Optional link (a site path such as /collections/eid or a full URL)
+  linkPath  String?
+  isActive  Boolean   @default(true)
+  startsAt  DateTime?
+  endsAt    DateTime?
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+// ───────────────────────────── Pricing ─────────────────────────────
+
+model OptionGroup {
+  id            String          @id @default(uuid()) @db.Uuid
+  code          OptionGroupCode @unique
+  name          String
+  selectionType SelectionType
+  isRequired    Boolean
+  sortOrder     Int             @default(0)
+
+  values OptionValue[]
+}
+
+model OptionValue {
+  id               String   @id @default(uuid()) @db.Uuid
+  groupId          String   @db.Uuid
+  code             String // e.g. "nida", "bell-sleeve"
+  name             String
+  description      String?
+  surchargeInPaise Int      @default(0)
+  swatchImagePath  String?
+  colourHex        String? // for COLOUR values, e.g. "#1B1B1B"
+  isActive         Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  group         OptionGroup    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  designOptions DesignOption[]
+  /// Design photos tagged as showing this colour.
+  designImages  DesignImage[]
+
+  @@unique([groupId, code])
+}
+
+model SizeBand {
+  id                String       @id @default(uuid()) @db.Uuid
+  code              SizeBandCode @unique
+  label             String // "Medium (bust 88–94 cm)"
+  adjustmentInPaise Int          @default(0)
+  bustMinCm         Decimal?     @db.Decimal(5, 1)
+  bustMaxCm         Decimal?     @db.Decimal(5, 1)
+  isActive          Boolean      @default(true)
+  sortOrder         Int          @default(0)
+
+  cartItems CartItem[]
+}
+
+// ───────────────────────────── Customer ─────────────────────────────
+
+model MeasurementProfile {
+  id             String            @id @default(uuid()) @db.Uuid
+  userId         String            @db.Uuid
+  name           String            @default("Me")
+  heightCm       Decimal           @db.Decimal(5, 1)
+  bustCm         Decimal           @db.Decimal(5, 1)
+  waistCm        Decimal           @db.Decimal(5, 1)
+  hipCm          Decimal           @db.Decimal(5, 1)
+  shoulderCm     Decimal           @db.Decimal(5, 1)
+  sleeveLengthCm Decimal           @db.Decimal(5, 1)
+  fullLengthCm   Decimal           @db.Decimal(5, 1)
+  wristCm        Decimal?          @db.Decimal(5, 1)
+  notes          String?
+  source         MeasurementSource @default(MANUAL)
+  isDefault      Boolean           @default(false)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cartItems CartItem[]
+
+  @@index([userId])
+}
+
+model Cart {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @db.Uuid
+  updatedAt DateTime @updatedAt
+
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CartItem[]
+}
+
+model CartItem {
+  id                     String   @id @default(uuid()) @db.Uuid
+  cartId                 String   @db.Uuid
+  designId               String   @db.Uuid
+  selectedOptionValueIds String[] @db.Uuid
+  sizeBandId             String?  @db.Uuid
+  measurementProfileId   String?  @db.Uuid // when set, the CUSTOM size band applies
+  quantity               Int      @default(1)
+  /// A private copy of her matching website AI preview (never a try-on), kept with the bag item so it outlives her one-hour copy.
+  aiPreviewPath          String?
+  /// The preview was made from her own words, not these options: shown to staff as inspiration only.
+  aiPreviewInspiration   Boolean  @default(false)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  cart               Cart                @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  design             Design              @relation(fields: [designId], references: [id], onDelete: Cascade)
+  sizeBand           SizeBand?           @relation(fields: [sizeBandId], references: [id], onDelete: SetNull)
+  measurementProfile MeasurementProfile? @relation(fields: [measurementProfileId], references: [id], onDelete: SetNull)
+
+  @@index([cartId])
+}
+
+model WishlistItem {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  designId  String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  design Design @relation(fields: [designId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, designId])
+}
+
+// ───────────────────────────── Orders ─────────────────────────────
+
+model Order {
+  id               String      @id @default(uuid()) @db.Uuid
+  orderNumber      String      @unique // "AB-2026-000123"
+  userId           String      @db.Uuid
+  status           OrderStatus @default(PENDING_PAYMENT)
+  currency         String      @default("INR")
+  subtotalInPaise  Int
+  shippingInPaise  Int         @default(0)
+  discountInPaise  Int         @default(0)
+  totalInPaise     Int // GST-inclusive
+  shippingAddress  Json // snapshot of Address at checkout
+  customerNote     String?
+  placedAt         DateTime? // set when payment is captured
+  cancelledAt      DateTime?
+  cancellationNote String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  user      User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  items     OrderItem[]
+  payments  Payment[]
+  shipments Shipment[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model OrderItem {
+  id                   String           @id @default(uuid()) @db.Uuid
+  orderId              String           @db.Uuid
+  designId             String           @db.Uuid
+  designSnapshot       Json // { name, slug, style, primaryImagePath }
+  optionsSnapshot      Json // [{ groupCode, valueId, valueName, surchargeInPaise }]
+  sizeBandCode         SizeBandCode
+  measurementsSnapshot Json? // copy of MeasurementProfile when CUSTOM
+  priceBreakdown       Json // output of calculatePrice()
+  unitPriceInPaise     Int
+  quantity             Int              @default(1)
+  stage                ProductionStage  @default(PLACED)
+  makerId              String?          @db.Uuid
+  dueDate              DateTime?
+  /// Workshop: who has taken this job at its current station (cleared on every stage change).
+  claimedById          String?          @db.Uuid
+  claimedAt            DateTime?
+  /// ON_HOLD: the stage it returns to, and the question that stopped it.
+  heldFromStage        ProductionStage?
+  holdReason           String?
+  /// A private copy of the customer's website AI preview for this abaya (never a try-on), for the admin and workshop. Deleted 90 days after delivery or cancellation.
+  aiPreviewPath        String?
+  /// The preview was made from her own words, not the ordered options: inspiration only, not the specification.
+  aiPreviewInspiration Boolean          @default(false)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  order       Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  claimedBy   User?                @relation("OrderItemClaimer", fields: [claimedById], references: [id], onDelete: SetNull)
+  design      Design               @relation(fields: [designId], references: [id], onDelete: Restrict)
+  maker       Maker?               @relation(fields: [makerId], references: [id], onDelete: SetNull)
+  stageEvents OrderStageEvent[]
+  techPack    TechPack?
+  patterns    Pattern[]
+  cuttings    CuttingRecord[]
+  stitchings  StitchingRecord[]
+  qcChecks    QcCheck[]
+  payouts     MakerPayout[]
+  team        WorkshopAssignment[]
+
+  @@index([orderId])
+  @@index([stage])
+  @@index([makerId, stage])
+}
+
+model OrderStageEvent {
+  id          String           @id @default(uuid()) @db.Uuid
+  orderItemId String           @db.Uuid
+  fromStage   ProductionStage?
+  toStage     ProductionStage
+  actorUserId String?          @db.Uuid
+  note        String?
+  photoPath   String? // private bucket
+  createdAt   DateTime         @default(now())
+
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  actor     User?     @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([orderItemId, createdAt])
+}
+
+model Shipment {
+  id             String         @id @default(uuid()) @db.Uuid
+  orderId        String         @db.Uuid
+  carrier        String?
+  trackingNumber String?
+  trackingUrl    String?
+  status         ShipmentStatus @default(PENDING)
+  orderItemIds   String[]       @db.Uuid // items in this parcel
+  shippedAt      DateTime?
+  deliveredAt    DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+// ───────────────────────────── Payments ─────────────────────────────
+
+model Payment {
+  id                String          @id @default(uuid()) @db.Uuid
+  /// What is being paid for: an abaya order, or an HD design download (exactly one is set).
+  orderId           String?         @db.Uuid
+  downloadId        String?         @db.Uuid
+  provider          PaymentProvider @default(RAZORPAY)
+  providerOrderId   String          @unique
+  providerPaymentId String?         @unique
+  amountInPaise     Int
+  status            PaymentStatus   @default(CREATED)
+  method            String? // upi, card, netbanking...
+  raw               Json? // last webhook payload (no card data is ever stored)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  order    Order?          @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  download DesignDownload? @relation(fields: [downloadId], references: [id], onDelete: Restrict)
+  refunds  Refund[]
+
+  @@index([orderId])
+  @@index([downloadId])
+}
+
+model Refund {
+  id               String       @id @default(uuid()) @db.Uuid
+  paymentId        String       @db.Uuid
+  amountInPaise    Int
+  reason           String
+  status           RefundStatus @default(PENDING)
+  providerRefundId String?      @unique
+  createdById      String?      @db.Uuid
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  createdBy User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([paymentId])
+}
+
+// ───────────────────────────── Production ─────────────────────────────
+
+model Maker {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String?  @unique @db.Uuid // login for the maker app (Phase 2)
+  name            String
+  phone           String? // optional: tailors sign in with their email
+  email           String?  @unique // their staff login (Staff & roles); linked on first workshop visit
+  city            String
+  skills          String[] // e.g. ["nida", "embroidery", "butterfly-cut"]
+  capacityPerWeek Int      @default(10)
+  rating          Decimal  @default(0) @db.Decimal(3, 2)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user       User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  orderItems OrderItem[]
+  payouts    MakerPayout[]
+}
+
+model TechPack {
+  id           String         @id @default(uuid()) @db.Uuid
+  orderItemId  String         @unique @db.Uuid
+  content      Json // pieces, measurements, fabric, trims, construction notes
+  status       TechPackStatus @default(DRAFT)
+  pdfPath      String? // private bucket
+  approvedById String?        @db.Uuid
+  approvedAt   DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  orderItem  OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  approvedBy User?     @relation(fields: [approvedById], references: [id], onDelete: SetNull)
+}
+
+model QcCheck {
+  id          String   @id @default(uuid()) @db.Uuid
+  orderItemId String   @db.Uuid
+  result      QcResult
+  checklist   Json // [{ item: "sleeve length ±1cm", ok: true }]
+  notes       String?
+  photoPaths  String[]
+  checkedById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  checkedBy User?     @relation(fields: [checkedById], references: [id], onDelete: SetNull)
+
+  @@index([orderItemId])
+}
+
+model MakerPayout {
+  id            String       @id @default(uuid()) @db.Uuid
+  makerId       String       @db.Uuid
+  orderItemId   String?      @db.Uuid
+  amountInPaise Int
+  status        PayoutStatus @default(PENDING)
+  reference     String? // bank / UPI transaction reference
+  paidAt        DateTime?
+  createdAt     DateTime     @default(now())
+
+  maker     Maker      @relation(fields: [makerId], references: [id], onDelete: Restrict)
+  orderItem OrderItem? @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+
+  @@index([makerId, status])
+}
+
+// ───────────────────────────── Platform ─────────────────────────────
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String?  @db.Uuid
+  action      String // "design.price_changed"
+  entityType  String // "Design"
+  entityId    String
+  before      Json?
+  after       Json?
+  ip          String?
+  createdAt   DateTime @default(now())
+
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorUserId, createdAt])
+}
+
+/// Outbox: one row per message per channel. A worker in apps/api sends QUEUED rows and retries with backoff.
+model Notification {
+  id            String              @id @default(uuid()) @db.Uuid
+  userId        String?             @db.Uuid
+  channel       NotificationChannel
+  template      String // "order.placed", "order.stage_changed"
+  payload       Json // everything needed to send: recipient + rendered content
+  status        NotificationStatus  @default(QUEUED)
+  error         String?
+  attempts      Int                 @default(0)
+  nextAttemptAt DateTime            @default(now())
+  dedupeKey     String?             @unique // the same event never queues the same message twice
+  sentAt        DateTime?
+  createdAt     DateTime            @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([status, nextAttemptAt])
+}
+
+/// Expo push tokens, per app install. Removed on sign-out or when Expo reports them dead.
+model DeviceToken {
+  id         String         @id @default(uuid()) @db.Uuid
+  userId     String         @db.Uuid
+  token      String         @unique // "ExponentPushToken[...]"
+  platform   DevicePlatform
+  app        ClientApp
+  createdAt  DateTime       @default(now())
+  lastSeenAt DateTime       @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, app])
+}
+
+model ImportJob {
+  id         String          @id @default(uuid()) @db.Uuid
+  source     ReferenceSource
+  params     Json // board id, query, feed name...
+  status     ImportJobStatus @default(QUEUED)
+  stats      Json? // { fetched, created, duplicates }
+  error      String?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime        @default(now())
+
+  references Reference[]
+}
+
+// ───────────── AI assistant (Step 15, owned by the `ai` module) ─────────────
+
+enum AiImageKind {
+  DESIGN_IMAGE
+  REFERENCE
+}
+
+enum AiJobStatus {
+  QUEUED
+  DONE
+  FAILED
+}
+
+enum AiSuggestionStatus {
+  PENDING
+  APPLIED
+  DISMISSED
+}
+
+/// One analysed image: the background job, its CLIP fingerprint and the tag suggestions.
+/// `subjectId` is a DesignImage.id or Reference.id; no foreign keys, because those tables
+/// belong to the catalog module (it tells the ai module when images come and go).
+model AiImage {
+  id               String             @id @default(uuid()) @db.Uuid
+  kind             AiImageKind
+  subjectId        String             @db.Uuid
+  designId         String?            @db.Uuid // owning design, for DESIGN_IMAGE
+  source           Json // { bucket, path } or { url }: where to fetch the image
+  status           AiJobStatus        @default(QUEUED)
+  attempts         Int                @default(0)
+  nextAttemptAt    DateTime           @default(now())
+  error            String?
+  model            String?
+  embedding        Float[]            @db.Real // unit-length CLIP vector (512 numbers)
+  phash            String? // 64-bit perceptual hash, 16 hex characters
+  suggestedTags    Json? // [{ tag, group, label, score }]
+  suggestedStyle   AbayaStyle?
+  styleScore       Float?
+  suggestedAltText String?
+  suggestionStatus AiSuggestionStatus @default(PENDING)
+  analysedAt       DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@unique([kind, subjectId])
+  @@index([status, nextAttemptAt])
+  @@index([designId])
+  @@index([updatedAt])
+}
+
+/// A staff member added by email before they have signed in. On their first sign-in
+/// with that (verified) email the roles are granted automatically (identity module).
+model StaffInvite {
+  id             String            @id @default(uuid()) @db.Uuid
+  email          String // lowercase
+  name           String?
+  roles          Role[]
+  status         StaffInviteStatus @default(PENDING)
+  invitedById    String?           @db.Uuid
+  acceptedUserId String?           @db.Uuid
+  createdAt      DateTime          @default(now())
+  acceptedAt     DateTime?
+  cancelledAt    DateTime?
+
+  invitedBy User? @relation("StaffInviteInviter", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@index([email, status])
+}
+
+enum PatternStatus {
+  DRAFT
+  CONFIRMED
+}
+
+/// Pattern station (production module): one row per version of an item's pattern.
+/// A QC fail back to pattern (or a remake) starts a new version; old ones stay as history.
+model Pattern {
+  id              String        @id @default(uuid()) @db.Uuid
+  orderItemId     String        @db.Uuid
+  version         Int
+  status          PatternStatus @default(DRAFT)
+  measurements    Json // [{ key, bodyCm, easeCm }]
+  pieces          Json // [{ name, count }]
+  fabricWidthCm   Int?
+  fabricLengthCm  Int?
+  liningLengthCm  Int?
+  seamAllowanceMm Int           @default(10)
+  notes           String        @default("")
+  files           Json // [{ path, name, contentType }] in the private bucket
+  createdById     String?       @db.Uuid
+  confirmedById   String?       @db.Uuid
+  confirmedAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  createdBy   User?     @relation("PatternCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  confirmedBy User?     @relation("PatternConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
+
+  @@unique([orderItemId, version])
+}
+
+/// Cutting station (production module): one row per cut of an item. A QC send-back to
+/// cutting adds attempt 2, 3…; earlier attempts stay as history.
+model CuttingRecord {
+  id              String   @id @default(uuid()) @db.Uuid
+  orderItemId     String   @db.Uuid
+  attempt         Int
+  fabricLot       String
+  colourConfirmed Boolean
+  fabricUsedCm    Int
+  estimateCm      Int? // the pattern's fabric estimate at the time
+  wastageCm       Int?
+  liningUsedCm    Int?
+  pieces          Json // [{ name, count, cut }]
+  notes           String   @default("")
+  photoPath       String // private bucket
+  cutById         String?  @db.Uuid
+  createdAt       DateTime @default(now())
+
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  cutBy     User?     @relation("CuttingCutBy", fields: [cutById], references: [id], onDelete: SetNull)
+
+  @@unique([orderItemId, attempt])
+}
+
+/// Stitching station (production module): one row per stitching of an item, saved when the
+/// tailor sends it to QC. A QC send-back to stitching adds attempt 2, 3…
+model StitchingRecord {
+  id           String    @id @default(uuid()) @db.Uuid
+  orderItemId  String    @db.Uuid
+  attempt      Int
+  checklist    Json // [{ key, label, done }]
+  measurements Json // [{ key, measuredCm, targetCm }]
+  notes        String    @default("")
+  photoPath    String // private bucket
+  makerId      String?   @db.Uuid
+  stitchedById String?   @db.Uuid
+  startedAt    DateTime?
+  createdAt    DateTime  @default(now()) // finished: sent to QC
+
+  orderItem  OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  stitchedBy User?     @relation("StitchingBy", fields: [stitchedById], references: [id], onDelete: SetNull)
+
+  @@unique([orderItemId, attempt])
+}
+
+/// One person per station for an abaya (pattern, cutting, qc, finishing; the tailor is
+/// OrderItem.makerId). Picked by the production manager before the tech pack is approved.
+model WorkshopAssignment {
+  id           String   @id @default(uuid()) @db.Uuid
+  orderItemId  String   @db.Uuid
+  station      String // TEAM_STATIONS in @abaya/contracts
+  userId       String   @db.Uuid
+  assignedById String?  @db.Uuid
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  orderItem  OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  user       User      @relation("WorkshopAssignee", fields: [userId], references: [id], onDelete: Cascade)
+  assignedBy User?     @relation("WorkshopAssigner", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@unique([orderItemId, station])
+  @@index([userId])
+}
+
+/// Studio: one AI design request by a designer (docs/apps/studio.md). The prompt passed the
+/// filter; images are made by the background worker. Pinterest pins are links only.
+model DesignGeneration {
+  id             String           @id @default(uuid()) @db.Uuid
+  designerId     String           @db.Uuid
+  prompt         String
+  /// Base choices: style, sleeve, fabric, colour, embroidery, closure, length, occasion.
+  options        Json
+  /// The designer's own sketch (private bucket), sent to the model as a guide.
+  sketchPath     String?
+  inspirationUrl String?
+  provider       String
+  model          String
+  status         GenerationStatus @default(QUEUED)
+  attempts       Int              @default(0)
+  error          String?
+  leasedUntil    DateTime?
+  createdAt      DateTime         @default(now())
+  finishedAt     DateTime?
+
+  designer User             @relation("GenerationDesigner", fields: [designerId], references: [id], onDelete: Cascade)
+  images   GeneratedImage[]
+
+  @@index([designerId, createdAt])
+  @@index([status, createdAt])
+}
+
+/// One variation from a generation, kept in the private bucket until used in a design.
+model GeneratedImage {
+  id           String   @id @default(uuid()) @db.Uuid
+  generationId String   @db.Uuid
+  storagePath  String
+  favourite    Boolean  @default(false)
+  /// The design made from this image (catalog id; no relation across modules).
+  designId     String?  @db.Uuid
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  generation DesignGeneration @relation(fields: [generationId], references: [id], onDelete: Cascade)
+
+  @@index([generationId, sortOrder])
+}
+
+enum DownloadStatus {
+  PENDING_PAYMENT
+  PAID
+  CANCELLED
+}
+
+/// A customer's purchase of a design's HD images (docs/apps/web.md "HD download"). Not an
+/// abaya order: never goes to the workshop. Snapshot of the design and image paths at purchase.
+model DesignDownload {
+  id                String         @id @default(uuid()) @db.Uuid
+  userId            String         @db.Uuid
+  /// Catalog design id (no relation across modules; the snapshot is what was bought).
+  designId          String         @db.Uuid
+  design            Json
+  imagePaths        String[]
+  priceInPaise      Int
+  status            DownloadStatus @default(PENDING_PAYMENT)
+  licenceAcceptedAt DateTime
+  paidAt            DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  payments Payment[]
+
+  @@index([userId, status])
+  @@index([designId])
+  @@index([status, paidAt])
+}
+
+enum CatalogJobKind {
+  PRODUCT_TO_MODEL
+  MODEL_CREATE
+  TRYON
+  EDIT
+  REFRAME
+  BACKGROUND_REMOVE
+}
+
+enum CatalogJobStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum CatalogReview {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum CatalogModelType {
+  AI
+  PERSONAL
+}
+
+/// A reusable model for the AI Catalog: an approved AI model or a personal model photo (with consent).
+model CatalogModelProfile {
+  id          String           @id @default(uuid()) @db.Uuid
+  name        String
+  type        CatalogModelType
+  imagePath   String
+  description String?
+  attributes  Json?
+  /// Personal models: when the designer confirmed the person agreed.
+  consentAt   DateTime?
+  createdById String           @db.Uuid
+  archivedAt  DateTime?
+  createdAt   DateTime         @default(now())
+
+  createdBy User         @relation("CatalogModelCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  jobs      CatalogJob[]
+
+  @@index([archivedAt, createdAt])
+}
+
+/// One FASHN request (docs/apps/studio.md "AI Catalog"): inputs, prompt, settings and outcome are
+/// kept for every generation so we can learn which prompts and settings work.
+model CatalogJob {
+  id               String           @id @default(uuid()) @db.Uuid
+  createdById      String           @db.Uuid
+  kind             CatalogJobKind
+  /// MODEL, MASTER, FRONT, FRONT_2, THREE_QUARTER, SIDE, BACK, EDITORIAL, EDIT, REFRAME, CLEANUP
+  view             String
+  modelProfileId   String?          @db.Uuid
+  /// The image this was made from (poses, edits, finals, retries).
+  parentImageId    String?          @db.Uuid
+  retryOfImageId   String?          @db.Uuid
+  /// Waits for this job to finish, then starts from its first image (references applied in order).
+  afterJobId       String?          @db.Uuid
+  retryCount       Int              @default(0)
+  /// Storage paths of the inputs: abaya, back, model, source, mask; plus garment description, model attributes.
+  inputs           Json
+  editType         String?
+  instruction      String?
+  prompt           String
+  endpoint         String
+  resolution       String
+  mode             String
+  numImages        Int
+  seed             Int
+  aspectRatio      String?
+  creditsEstimated Int
+  creditsUsed      Int?
+  provider         String
+  providerJobId    String?
+  status           CatalogJobStatus @default(QUEUED)
+  attempts         Int              @default(0)
+  error            String?
+  /// Next time the worker looks at it (submit, or poll FASHN).
+  nextCheckAt      DateTime         @default(now())
+  submittedAt      DateTime?
+  flags            String[]
+  /// Set when started from a design's Images tab ("Make with AI"), so that tab lists its own jobs
+  designId         String?          @db.Uuid
+  createdAt        DateTime         @default(now())
+  finishedAt       DateTime?
+
+  createdBy    User                 @relation("CatalogJobCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  modelProfile CatalogModelProfile? @relation(fields: [modelProfileId], references: [id], onDelete: SetNull)
+  afterJob     CatalogJob?          @relation("CatalogJobChain", fields: [afterJobId], references: [id], onDelete: SetNull)
+  nextJobs     CatalogJob[]         @relation("CatalogJobChain")
+  images       CatalogImage[]
+
+  @@index([createdById, createdAt])
+  @@index([status, nextCheckAt])
+  @@index([afterJobId])
+  @@index([designId, createdAt])
+}
+
+/// One output image of a catalog job, with the designer's verdict, reasons and scores.
+model CatalogImage {
+  id           String        @id @default(uuid()) @db.Uuid
+  jobId        String        @db.Uuid
+  storagePath  String
+  sortOrder    Int           @default(0)
+  review       CatalogReview @default(PENDING)
+  reasons      String[]
+  scores       Json?
+  note         String?
+  reviewedById String?       @db.Uuid
+  reviewedAt   DateTime?
+  /// A design this image was added to as a photo (catalog id; no relation across modules).
+  designId     String?       @db.Uuid
+  createdAt    DateTime      @default(now())
+
+  job CatalogJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, sortOrder])
+}
+
+/// A designer's saved direction for the AI Catalog ("Eid golden hour"), shared with the team.
+model CatalogPromptPreset {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String
+  text        String
+  createdById String    @db.Uuid
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([archivedAt, createdAt])
+}
+
+/// Customer AI pictures on the website (docs/apps/web.md "AI preview and try-on").
+/// PREVIEW: the design with her chosen options (shared by previewKey). TRYON: the abaya on her photo (private, deleted after 30 days).
+model CustomerPreview {
+  /// The FASHN endpoint of each step when they differ ("a model like me": model-create then tryon-max; photo + fit: tryon-max then edit). Empty: every step uses `endpoint`.
+  stepEndpoints          String[]              @default([])
+  /// Set when the pictures were deleted because the customer was inactive for a day (files gone, paths cleared; the row keeps credits for reports).
+  purgedAt               DateTime?
+  id                     String                @id @default(uuid()) @db.Uuid
+  userId                 String                @db.Uuid
+  kind                   CustomerPreviewKind
+  designId               String                @db.Uuid
+  /// PREVIEW: design id + sorted option ids; shared across customers.
+  previewKey             String?
+  selectedOptionValueIds String[]              @db.Uuid
+  /// "Group: Value" lines, for the admin list.
+  choices                String[]
+  /// Private-bucket inputs: the garment photo, and her photo for a try-on.
+  sourcePath             String
+  personPath             String?
+  /// The preview a try-on wears, when she used one.
+  basePreviewId          String?               @db.Uuid
+  prompt                 String
+  endpoint               String
+  credits                Int
+  providerJobId          String?
+  status                 CustomerPreviewStatus @default(QUEUED)
+  attempts               Int                   @default(0)
+  error                  String?
+  resultPath             String?
+  /// Preview: one FASHN edit prompt per step (colour/fabric, then details); each starts from the last result.
+  steps                  String[]
+  step                   Int                   @default(0)
+  /// The input of the current step after the first (the previous step's result).
+  workingPath            String?
+  /// What the finished picture must show, checked by Gemini vision: [{ text, critical }].
+  checks                 Json?
+  /// Remade once with the problems the check found.
+  retries                Int                   @default(0)
+  /// "Checked", "Not checked", or the problems the check found.
+  checkNotes             String?
+  /// Failed the check twice: customers are told no accurate preview could be made (shared until hidden).
+  inaccurate             Boolean               @default(false)
+  hidden                 Boolean               @default(false)
+  nextCheckAt            DateTime              @default(now())
+  submittedAt            DateTime?
+  finishedAt             DateTime?
+  /// Try-ons: photo and result are deleted after this.
+  expiresAt              DateTime?
+  createdAt              DateTime              @default(now())
+
+  user   User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Who may see this picture, until when (each customer has her own hour, also for a shared preview).
+  access CustomerPreviewAccess[]
+
+  @@index([userId, purgedAt])
+  @@index([userId, kind, createdAt])
+  @@index([previewKey])
+  @@index([status, nextCheckAt])
+  @@index([createdAt])
+  @@index([expiresAt])
+}
+
+enum CustomerPreviewKind {
+  PREVIEW
+  TRYON
+}
+
+enum CustomerPreviewStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+}
+
+/// A customer's access to a website AI preview or try-on: listed under the AI studio as one of her
+/// recent pictures until `expiresAt` (one hour after she got it). The picture's files are deleted
+/// once nobody's access is left. A shared preview gets one row per customer who received it.
+model CustomerPreviewAccess {
+  id         String   @id @default(uuid()) @db.Uuid
+  previewId  String   @db.Uuid
+  userId     String   @db.Uuid
+  receivedAt DateTime @default(now())
+  expiresAt  DateTime
+
+  preview CustomerPreview @relation(fields: [previewId], references: [id], onDelete: Cascade)
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([previewId, userId])
+  @@index([userId, expiresAt])
+  @@index([previewId, expiresAt])
+}
+
+/// Customers who asked to be told when ordering opens (website "Notify me", while ordering is off).
+model OrderingWaitlist {
+  userId    String   @id @db.Uuid
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+}
+
+/// Machine translations of catalog text (design and collection names, descriptions, fabric and
+/// colour names…) for the Arabic site, keyed by a hash of the English source. Made in the
+/// background (Gemini, else MyMemory) and reused until the English text changes.
+model ContentTranslation {
+  lang       String
+  sourceHash String
+  source     String
+  text       String
+  createdAt  DateTime @default(now())
+
+  @@id([lang, sourceHash])
+}

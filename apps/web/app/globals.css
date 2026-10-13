@@ -1,0 +1,642 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+  }
+  ::selection {
+    @apply bg-accent-100 text-accent-900;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+}
+
+@layer utilities {
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+  .pb-safe {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+}
+
+/* Scroll reveal (components/motion/reveal-observer.tsx). The `js` class is set
+   before paint, so without JS or with reduced motion nothing is ever hidden. */
+@media (prefers-reduced-motion: no-preference) {
+  .js [data-reveal] {
+    opacity: 0;
+    transform: translateY(28px);
+    transition:
+      opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+  .js [data-reveal][data-shown] {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ───────── Arabic (right-to-left) ─────────
+   Arabic letters join, so letter-spacing breaks words apart; Arabic has no true italics; and
+   the script needs a little more line height. Western digits are kept (see content/i18n.ts). */
+[dir='rtl'] body {
+  line-height: 1.75;
+}
+[dir='rtl'] [class*='tracking-'] {
+  letter-spacing: 0 !important;
+}
+[dir='rtl'] em,
+[dir='rtl'] .italic {
+  font-style: normal;
+}
+[dir='rtl'] .font-display {
+  line-height: 1.35;
+}
+
+/* ───────── Arabic-inspired ornaments (components/ornament/geometric.tsx) ───────── */
+
+/* "draw": the divider's gold lines grow out from the star, which turns into place. */
+@media (prefers-reduced-motion: no-preference) {
+  .js [data-reveal='draw'] {
+    opacity: 1;
+    transform: none;
+  }
+  .js [data-reveal='draw'] .ornament-line {
+    transform: scaleX(0);
+    transition: transform 1.2s cubic-bezier(0.22, 1, 0.36, 1) 0.2s;
+  }
+  .js [data-reveal='draw'] .ornament-line:first-child {
+    transform-origin: right;
+  }
+  .js [data-reveal='draw'] .ornament-line:last-child {
+    transform-origin: left;
+  }
+  .js [data-reveal='draw'] .ornament-star {
+    opacity: 0;
+    transform: rotate(-90deg) scale(0.4);
+    transition:
+      opacity 0.8s ease,
+      transform 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .js [data-reveal='draw'][data-shown] .ornament-line {
+    transform: scaleX(1);
+  }
+  .js [data-reveal='draw'][data-shown] .ornament-star {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* "arch": the .arch-door inside opens upwards, like a doorway revealing the room. The clip is on
+     the child: Chrome measures an element's own clip-path when deciding whether it is on screen, so
+     a clipped observed element would never count as visible and never open. */
+  .js [data-reveal='arch'] {
+    opacity: 1;
+    transform: none;
+  }
+  .js [data-reveal='arch'] .arch-door {
+    clip-path: inset(100% 0 0 0 round 50% 50% 0 0);
+    transition: clip-path 1.3s cubic-bezier(0.22, 1, 0.36, 1);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+  .js [data-reveal='arch'][data-shown] .arch-door {
+    clip-path: inset(0 0 0 0 round 50% 50% 0 0);
+  }
+
+  /* A slow shimmer on gold stars (hero medallion). */
+  .star-glow {
+    animation: star-glow 6s ease-in-out infinite;
+  }
+}
+@keyframes star-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0 rgb(204 162 74 / 0));
+    opacity: 0.85;
+  }
+  50% {
+    filter: drop-shadow(0 0 10px rgb(204 162 74 / 0.55));
+    opacity: 1;
+  }
+}
+
+/* Lantern glow: a warm gold halo on hover (design cards, collection tiles). */
+.lantern-glow {
+  transition:
+    box-shadow 0.6s ease,
+    transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.lantern-glow:hover,
+.lantern-glow:focus-visible {
+  box-shadow:
+    0 0 0 1px rgb(204 162 74 / 0.35),
+    0 24px 60px -24px rgb(180 135 52 / 0.55);
+}
+
+/* Entrance loader (components/layout/arch-loader.tsx), on every full page load and only when JS runs:
+   deep wine with a slowly drifting gold lattice, a warm glow and rising gold dust; the gold arch
+   draws itself, its keystone twinkles, a gold rule draws out and the name shimmers in gold; then
+   the page shows through the arch as it opens like a doorway. */
+.arch-loader {
+  display: none;
+}
+.js .arch-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: radial-gradient(85% 75% at 50% 45%, #7c2b3a 0%, #5a1823 38%, #44111b 62%, #2a0b11 100%);
+  cursor: pointer;
+  /* The page shows through an arch-shaped hole that grows from nothing (see .is-opening). */
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 40'%3E%3Cpath d='M0 40V16a16 16 0 0 1 32 0v24z'/%3E%3C/svg%3E"), linear-gradient(#000, #000);
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 40'%3E%3Cpath d='M0 40V16a16 16 0 0 1 32 0v24z'/%3E%3C/svg%3E"), linear-gradient(#000, #000);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: 50% 50%, 0 0;
+  mask-position: 50% 50%, 0 0;
+  -webkit-mask-size: 0 0, 100% 100%;
+  mask-size: 0 0, 100% 100%;
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+.arch-loader.is-opening {
+  animation: arch-open 0.95s cubic-bezier(0.7, 0, 0.2, 1) forwards;
+}
+@keyframes arch-open {
+  0% {
+    -webkit-mask-size: 0 0, 100% 100%;
+    mask-size: 0 0, 100% 100%;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    -webkit-mask-size: 260vmax 325vmax, 100% 100%;
+    mask-size: 260vmax 325vmax, 100% 100%;
+    opacity: 0;
+  }
+}
+
+/* The gold lattice, faint, drifting and slowly turning; brighter in the middle */
+.arch-loader-pattern {
+  position: absolute;
+  inset: -20%;
+  opacity: 0.16;
+  animation: arch-drift 14s linear infinite;
+  -webkit-mask-image: radial-gradient(closest-side at 50% 50%, #000 0%, rgba(0, 0, 0, 0.35) 70%, transparent 100%);
+  mask-image: radial-gradient(closest-side at 50% 50%, #000 0%, rgba(0, 0, 0, 0.35) 70%, transparent 100%);
+}
+@keyframes arch-drift {
+  from {
+    transform: rotate(0deg) scale(1.05);
+  }
+  to {
+    transform: rotate(8deg) scale(1.12);
+  }
+}
+/* A warm lantern glow behind the arch, breathing */
+.arch-loader-glow {
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  width: min(70vmin, 560px);
+  height: min(70vmin, 560px);
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(233, 196, 120, 0.42) 0%, rgba(201, 126, 138, 0.18) 38%, rgba(124, 43, 58, 0) 70%);
+  transform: translate(-50%, -50%);
+  filter: blur(6px);
+  animation: arch-glow 3.2s ease-in-out infinite;
+}
+@keyframes arch-glow {
+  0%,
+  100% {
+    opacity: 0.75;
+    transform: translate(-50%, -50%) scale(0.94);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.06);
+  }
+}
+.arch-loader-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 90% at 50% 50%, transparent 55%, rgba(16, 4, 7, 0.55) 100%);
+  pointer-events: none;
+}
+/* Gold dust rising and fading */
+.arch-loader-dust {
+  position: absolute;
+  border-radius: 9999px;
+  background: #f5dfa0;
+  box-shadow: 0 0 8px 2px rgba(240, 205, 130, 0.65);
+  opacity: 0;
+  animation-name: arch-dust;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+@keyframes arch-dust {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0);
+  }
+  20% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(12px, -26vh, 0);
+  }
+}
+
+.arch-loader-centre {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  transition:
+    opacity 0.3s ease,
+    transform 0.6s cubic-bezier(0.7, 0, 0.2, 1);
+}
+.is-opening .arch-loader-centre {
+  opacity: 0;
+  transform: scale(1.08);
+}
+.arch-loader-mark {
+  width: clamp(92px, 16vmin, 132px);
+  height: auto;
+  overflow: visible;
+  filter: drop-shadow(0 0 10px rgba(240, 205, 130, 0.55)) drop-shadow(0 14px 28px rgba(16, 4, 7, 0.5));
+}
+.arch-loader-mark > path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: arch-draw 1.05s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+.arch-loader-mark .arch-inner {
+  animation-delay: 0.28s;
+}
+/* The keystone: a dot that pops in, then twinkles into a small star */
+.arch-loader-spark {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation:
+    arch-dot 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) 0.95s forwards,
+    arch-twinkle 2.4s ease-in-out 1.4s infinite;
+}
+.arch-loader-spark path {
+  opacity: 0.85;
+}
+@keyframes arch-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes arch-dot {
+  from {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes arch-twinkle {
+  0%,
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+  50% {
+    transform: scale(1.35) rotate(45deg);
+  }
+}
+/* A gold rule that draws out from the middle under the arch */
+.arch-loader-rule {
+  display: block;
+  margin-top: 1.25rem;
+  width: 9rem;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #e3c27a 30%, #fbf0cf 50%, #e3c27a 70%, transparent);
+  transform: scaleX(0);
+  animation: arch-rule 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.75s forwards;
+}
+@keyframes arch-rule {
+  to {
+    transform: scaleX(1);
+  }
+}
+/* The name in shimmering gold: a sheen passes across it once it has risen */
+.arch-loader-name {
+  background: linear-gradient(100deg, #c99a4a 0%, #f3dc9e 30%, #fffaf0 45%, #f3dc9e 60%, #c99a4a 100%);
+  background-size: 250% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 6px 26px rgba(16, 4, 7, 0.35);
+  opacity: 0;
+  animation:
+    arch-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.6s forwards,
+    arch-sheen 1.6s ease-in-out 1.1s forwards;
+}
+.arch-loader-tag {
+  opacity: 0;
+  animation: arch-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.9s forwards;
+}
+@keyframes arch-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes arch-sheen {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .arch-loader-pattern,
+  .arch-loader-glow,
+  .arch-loader-dust,
+  .arch-loader-mark > path,
+  .arch-loader-spark,
+  .arch-loader-rule,
+  .arch-loader-name,
+  .arch-loader-tag {
+    animation: none;
+  }
+  .arch-loader-mark > path,
+  .arch-loader-spark,
+  .arch-loader-name,
+  .arch-loader-tag {
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+  .arch-loader-rule {
+    transform: none;
+  }
+  .arch-loader-dust {
+    display: none;
+  }
+  .arch-loader.is-opening {
+    animation: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+}
+
+
+/* "line": the atelier journey's gold thread draws across as the section comes into view. */
+@media (prefers-reduced-motion: no-preference) {
+  .js [data-reveal='line'] {
+    opacity: 1;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 2.4s cubic-bezier(0.22, 1, 0.36, 1) 0.3s;
+  }
+  [dir='rtl'] .js [data-reveal='line'] {
+    transform-origin: right;
+  }
+  .js [data-reveal='line'][data-shown] {
+    transform: scaleX(1);
+  }
+}
+
+/* "mask": words rise out of an invisible line when the block scrolls into view (components/motion/masked-text.tsx). */
+@media (prefers-reduced-motion: no-preference) {
+  .js [data-reveal='mask'] {
+    opacity: 1;
+    transform: none;
+  }
+  .js [data-reveal='mask'] .mask-word {
+    transform: translateY(110%);
+    opacity: 0;
+    transition:
+      transform 0.9s cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 0.6s ease;
+    transition-delay: calc(var(--reveal-delay, 0ms) + var(--i, 0) * 55ms);
+  }
+  .js [data-reveal='mask'][data-shown] .mask-word {
+    transform: none;
+    opacity: 1;
+  }
+}
+/* Above the fold the words rise on first paint instead (a CSS animation, so nothing is hidden without JS). */
+.mask-rise .mask-word {
+  animation-delay: calc(var(--rise-delay, 0ms) + var(--i, 0) * 60ms);
+}
+
+/* Line drawing (logo, hero underline): paths carry pathLength="1". */
+@keyframes draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* The gold thread under the hero's "you" draws itself after the words have risen. */
+@media (prefers-reduced-motion: no-preference) {
+  .hero-underline {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: draw 1.1s cubic-bezier(0.22, 1, 0.36, 1) 0.95s both;
+  }
+}
+
+/* Silhouette line drawings (components/home/silhouette-sketch.tsx) draw on when their tile scrolls in. */
+@media (prefers-reduced-motion: no-preference) {
+  .js [data-reveal='sketch'] .silhouette-sketch path {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+  }
+  .js [data-reveal='sketch'][data-shown] .silhouette-sketch path {
+    animation: draw 1.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+
+/* Craft motion in the atelier journey (components/home/journey-art.tsx), while its step is active. */
+@media (prefers-reduced-motion: no-preference) {
+  .journey-art .draw,
+  .journey-art .cutline,
+  .journey-art .stitch {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 0;
+  }
+  .journey-art[data-active='false'] {
+    opacity: 0.6;
+  }
+  .journey-art[data-active='true'] .draw {
+    animation: draw 1.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .journey-art[data-active='true'] .d2 {
+    animation-delay: 0.5s;
+  }
+  .journey-art[data-active='true'] .d3 {
+    animation-delay: 0.9s;
+  }
+  .journey-art[data-active='true'] .pencil {
+    transform-origin: 96px 14px;
+    animation: pencil-write 1.6s ease-in-out both;
+  }
+  .journey-art .ripple {
+    animation: ripple 3s ease-in-out infinite;
+  }
+  .journey-art .r2 {
+    animation-delay: -1s;
+  }
+  .journey-art .r3 {
+    animation-delay: -2s;
+  }
+  .journey-art[data-active='true'] .blade.a {
+    transform-origin: 60px 60px;
+    animation: blade-a 1.6s ease-in-out both;
+  }
+  .journey-art[data-active='true'] .blade.b {
+    transform-origin: 60px 60px;
+    animation: blade-b 1.6s ease-in-out both;
+  }
+  .journey-art[data-active='true'] .cutline {
+    animation: draw 1.6s linear 0.3s both;
+  }
+  .journey-art[data-active='true'] .stitch {
+    animation: draw 1.8s linear both;
+  }
+  .journey-art[data-active='true'] .s2 {
+    animation-delay: 0.6s;
+  }
+  .journey-art[data-active='true'] .needle {
+    animation: needle-bob 0.9s ease-in-out infinite;
+  }
+  .journey-art[data-active='true'] .lid {
+    transform-origin: 60px 54px;
+    animation: lid-lift 1.6s cubic-bezier(0.22, 1, 0.36, 1) 0.3s both;
+  }
+  .journey-art .ribbon {
+    animation: float-soft 4s ease-in-out infinite;
+  }
+  .journey-sketch path {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: draw 1.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+@keyframes pencil-write {
+  0% { transform: translate(-40px, 40px) rotate(-6deg); opacity: 0; }
+  15% { opacity: 1; }
+  100% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
+}
+@keyframes ripple {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  50% { transform: translateY(3px) scaleY(-1) translateY(-3px); }
+}
+@keyframes blade-a {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(14deg); }
+}
+@keyframes blade-b {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-14deg); }
+}
+@keyframes needle-bob {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-6px, 6px); }
+}
+@keyframes lid-lift {
+  from { transform: rotateX(0deg) translateY(0); }
+  to { transform: translateY(-10px) rotate(-4deg); }
+}
+
+/* The arch monogram draws itself once (header), ending fully drawn. */
+@media (prefers-reduced-motion: no-preference) {
+  .brand-draw path {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: draw 1.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .brand-draw path + path {
+    animation-delay: 0.25s;
+  }
+}
+
+/* Soft woven texture for dark sections. */
+.bg-weave {
+  background-image:
+    radial-gradient(circle at 1px 1px, rgb(255 255 255 / 0.07) 1px, transparent 0);
+  background-size: 22px 22px;
+}
+
+/* Long-form policy and help text. */
+.prose-policy h2 {
+  @apply mt-10 font-display text-2xl font-semibold text-foreground;
+}
+.prose-policy h3 {
+  @apply mt-6 font-semibold text-foreground;
+}
+.prose-policy p,
+.prose-policy li {
+  @apply mt-3 leading-relaxed text-neutral-700;
+}
+.prose-policy ul {
+  @apply mt-2 list-disc space-y-1 pl-5;
+}
+.prose-policy a {
+  @apply text-accent-700 underline underline-offset-2;
+}
+
+/*
+ * Image protection (docs/apps/web.md "Image protection"): printing or "Save as PDF" leaves every
+ * design photo, AI preview and try-on out; the rest of the page prints normally.
+ */
+@media print {
+  img,
+  picture,
+  video,
+  canvas,
+  svg image {
+    visibility: hidden !important;
+  }
+  * {
+    background-image: none !important;
+  }
+  body::before {
+    content: 'Images on Abaya Atelier are protected and are left out when printing or saving as PDF.';
+    display: block;
+    margin: 0 0 16px;
+    padding: 10px 14px;
+    border: 1px solid #dca7af;
+    border-radius: 8px;
+    color: #44111b;
+    font: 13px/1.5 system-ui, sans-serif;
+  }
+  html[lang='ar'] body::before {
+    content: 'الصور في هذا الموقع محمية ولا تظهر عند الطباعة أو الحفظ بصيغة PDF.';
+    direction: rtl;
+  }
+}

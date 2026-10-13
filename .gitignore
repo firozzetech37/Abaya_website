@@ -1,0 +1,45 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# builds
+dist/
+build/
+.next/
+out/
+.turbo/
+coverage/
+
+# expo / react native
+.expo/
+android/
+ios/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# env and secrets — NEVER commit these
+.env
+.env.*
+!.env.example
+
+# python (services/ai)
+__pycache__/
+.venv/
+*.pyc
+
+# editors / os
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# claude code personal settings
+.claude/settings.local.json
+
+# logs
+*.log
+*.tsbuildinfo

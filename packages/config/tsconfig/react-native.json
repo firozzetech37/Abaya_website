@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Abaya Expo / React Native app",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["DOM", "ESNext"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "customConditions": ["react-native"],
+    "jsx": "react-jsx",
+    "allowJs": true,
+    "noEmit": true,
+    "declaration": false
+  }
+}
