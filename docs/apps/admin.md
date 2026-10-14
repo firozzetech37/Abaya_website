@@ -72,7 +72,7 @@ once after upgrading (it is idempotent).
 with "Preview my design" on the website and "a model like me" try-ons (badge; no photo of the
 customer), today's previews, try-ons and FASHN credits against the daily limit, and **Hide** for a
 bad preview. Customers see each picture for an hour; it stays here for
-`CUSTOMER_AI_PREVIEW_KEEP_DAYS` (30) days, then shows "Deleted: pictures are kept 30 days" (its
+`CUSTOMER_AI_PREVIEW_KEEP_HOURS` (48) hours, then shows "Deleted: pictures are kept 48 hours" (its
 credits still count). Try-ons on a customer's own photo are private, deleted after the hour and
 never listed (docs/apps/web.md "AI preview and try-on").
 

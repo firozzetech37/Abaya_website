@@ -754,7 +754,7 @@ export const strings = {
   customerPreviews: {
     title: 'Customer AI previews',
     subtitle:
-      'Pictures customers made with “Preview my design” on the website (FASHN, 1K fast, colour and fabric first, then the details; each checked against the original photo by Gemini and remade once if wrong). Shared: the same design and options are made once. Also “a model like me” try-ons (a made-up model with the customer’s height and size, no photo of her). Customers see each picture for an hour; it stays here for 30 days, then is deleted. Try-ons on customers’ own photos are private, deleted after the hour and never listed here.',
+      'Pictures customers made with “Preview my design” on the website (FASHN, 1K fast, colour and fabric first, then the details; each checked against the original photo by Gemini and remade once if wrong). Shared: the same design and options are made once. Also “a model like me” try-ons (a made-up model with the customer’s height and size, no photo of her). Customers see each picture for an hour; it stays here for 48 hours, then is deleted. Try-ons on customers’ own photos are private, deleted after the hour and never listed here.',
     previewsToday: 'Previews today',
     tryOnsToday: 'Try-ons today',
     creditsToday: 'Credits today',
@@ -765,7 +765,7 @@ export const strings = {
     hidden: 'Hidden',
     failed: 'Failed',
     inaccurate: 'Not accurate (failed the check twice)',
-    purged: 'Deleted: pictures are kept 30 days',
+    purged: 'Deleted: pictures are kept 48 hours',
     modelTryOn: 'Try-on · a model like me',
     checked: '✓ Accuracy checked',
     notChecked: 'Not checked (no Gemini answer)',

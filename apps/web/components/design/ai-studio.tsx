@@ -2,8 +2,8 @@
 
 import { type CustomerPreviewDto, type MeasurementProfileDto, PREVIEW_REQUEST_MAX, type TryOnBody, type TryOnMode } from '@abaya/contracts';
 import { m } from 'framer-motion';
-import { Camera, Check, ImagePlus, Loader2, Ruler, ShieldCheck, Sparkles, Trash2, UserRound, Wand2 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Camera, Check, ImagePlus, Loader2, Ruler, ShieldCheck, Sparkles, Trash2, Wand2 } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useStrings } from '@/components/i18n/locale-provider';
 import { Button } from '@/components/ui/button';
@@ -18,11 +18,52 @@ import { usePathname, useRouter } from '@/components/i18n/navigation';
 import { HEIC_ACCEPT, jpegFromHeic, looksLikeHeic } from '@/lib/heic';
 import { type BackgroundChoice, BackgroundPicker } from './background-picker';
 import { CameraCapture, canUseCamera } from './camera-capture';
+import { useOrderingOpen } from '@/lib/queries/ordering';
 import { TryOnChoice, type TryOnVersion } from './try-on-choice';
 import { guideSeen, TryOnGuide } from './try-on-guide';
 import { TRYON_ACCEPT, useAiLimits, useAiPicture, useCreatePreview, useCreateTryOn, useDeleteTryOn, useRecentAiPictures } from '@/lib/queries/try-on';
 import { useMeasurements } from '@/lib/queries/me';
 import { cn, loginHref } from '@/lib/utils';
+
+interface StudioDesign {
+  id: string;
+  name: string;
+  slug: string;
+  /** The design's HD photos are for sale (docs/apps/web.md "HD download"): AI pictures point to the offer. */
+  hdForSale?: boolean;
+}
+
+/** The HD download, named under the "AI preview" and "try-on" results */
+const HD_OFFER_ID = 'two-ways';
+
+/**
+ * Under an AI picture: "[Buy the HD design] for this abaya's photos without a watermark", a link
+ * to the offer further down the page. Only while ordering is open (the offer is hidden otherwise).
+ * `onGo` closes a dialog first, so the page can scroll to the offer.
+ */
+function HdOfferLine({ className, onGo }: { className?: string; onGo?: () => void }) {
+  const { tryOn: t } = useStrings();
+  const open = useOrderingOpen();
+  if (!open) return null;
+  return (
+    <span className={cn('block text-[11px] text-muted', className)}>
+      <a
+        href={`#${HD_OFFER_ID}`}
+        className="font-medium text-accent-800 underline decoration-accent-800/40 underline-offset-2 hover:text-accent-900"
+        onClick={(e) => {
+          if (!onGo) return;
+          e.preventDefault();
+          onGo();
+          // After the dialog has closed: the offer is on the page behind it.
+          window.setTimeout(() => document.getElementById(HD_OFFER_ID)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+        }}
+      >
+        {t.hdOffer.link}
+      </a>{' '}
+      {t.hdOffer.rest}
+    </span>
+  );
+}
 
 /**
  * "See it before it's made": an AI preview of the design with the customer's choices, and a
@@ -38,7 +79,7 @@ export function AiStudio({
   canPreview = true,
   tryOnChoice,
 }: {
-  design: { id: string; name: string; slug: string };
+  design: StudioDesign;
   selectedIds: string[];
   /** Every required option group has a choice. */
   complete: boolean;
@@ -287,6 +328,7 @@ export function AiStudio({
                   <ShieldCheck className="size-3.5 shrink-0 text-accent-700" aria-hidden />
                   {t.imageRights}
                 </span>
+                {design.hdForSale && <HdOfferLine className="ps-5" />}
               </figcaption>
             </figure>
           ) : (
@@ -767,7 +809,7 @@ function TryOnDialog({
   onClose,
   onHowItWorks,
 }: {
-  design: { id: string; name: string; slug: string };
+  design: StudioDesign;
   /** Which abaya she chose to try on. */
   version: TryOnVersion;
   /** Her finished preview of the options chosen now (the customised abaya), if she made one. */
@@ -915,7 +957,8 @@ function TryOnDialog({
           <Sparkles className="size-3.5 text-gold-500" aria-hidden />
           {t.guide.howItWorks}
         </button>
-        <DialogDescription className="text-sm text-neutral-700">{t.dialogBody}</DialogDescription>
+        {/* Read out by screen readers only; the window explains itself */}
+        <DialogDescription className="sr-only">{t.dialogBody}</DialogDescription>
 
         {resultId && status === 'DONE' && result.data?.imageUrl ? (
           <div className="mt-4 space-y-3 motion-safe:animate-fade-in">
@@ -933,6 +976,7 @@ function TryOnDialog({
                   {mode === 'MODEL' ? t.privacyModel : t.privacy}
                 </span>
                 <span className="block ps-6 text-[11px] text-muted">{t.imageRights}</span>
+                {design.hdForSale && <HdOfferLine className="ps-6" onGo={onClose} />}
               </figcaption>
             </figure>
             <div className="flex flex-wrap justify-between gap-2">
@@ -975,47 +1019,43 @@ function TryOnDialog({
           <div className="mt-4 space-y-4">
             {status === 'FAILED' && result.data?.error ? <Alert tone="danger">{serverText(result.data.error)}</Alert> : null}
 
-            {/* Two ways to try it on */}
-            <div role="radiogroup" aria-label={t.modeLabel} className="grid grid-cols-2 gap-2">
-              {(
-                [
-                  { value: 'PHOTO', icon: Camera, title: t.modePhoto, hint: t.modePhotoHint },
-                  { value: 'MODEL', icon: UserRound, title: t.modeModel, hint: t.modeModelHint },
-                ] as const
-              ).map((m2) => (
-                <button
-                  key={m2.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={mode === m2.value}
-                  onClick={() => {
-                    setMode(m2.value);
-                    setMessage(null);
-                  }}
-                  className={cn(
-                    'flex flex-col items-start gap-1 rounded-xl border p-3 text-start transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500',
-                    mode === m2.value ? 'border-primary bg-gradient-to-br from-accent-50 to-surface ring-1 ring-primary' : 'border-neutral-200 hover:border-gold-300',
-                  )}
-                >
-                  <span className="flex items-center gap-2 text-sm font-semibold">
-                    <m2.icon className={cn('size-4', mode === m2.value ? 'text-primary' : 'text-accent-700')} aria-hidden />
-                    {m2.title}
-                  </span>
-                  <span className="text-xs leading-snug text-muted">{m2.hint}</span>
-                </button>
-              ))}
+            {/* Two ways to try it on: "Select", then "My photo" or "A model like me" */}
+            <div className="space-y-1.5">
+              <p id="tryon-mode-label" className="text-xs font-medium uppercase tracking-wide text-muted">
+                {t.modeLabel}
+              </p>
+              <div role="radiogroup" aria-labelledby="tryon-mode-label" className="flex items-center gap-2">
+                {(
+                  [
+                    { value: 'PHOTO', title: t.modePhoto },
+                    { value: 'MODEL', title: t.modeModel },
+                  ] as const
+                ).map((m2, i) => (
+                  <Fragment key={m2.value}>
+                    {i > 0 ? (
+                      <span className="shrink-0 text-xs text-muted" aria-hidden>
+                        {t.modeOr}
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={mode === m2.value}
+                      onClick={() => {
+                        setMode(m2.value);
+                        setMessage(null);
+                      }}
+                      className={cn(
+                        'flex-1 rounded-lg border px-3 py-2 text-center text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500',
+                        mode === m2.value ? 'border-primary bg-accent-50 text-primary ring-1 ring-primary' : 'border-neutral-200 text-neutral-800 hover:border-gold-300',
+                      )}
+                    >
+                      {m2.title}
+                    </button>
+                  </Fragment>
+                ))}
+              </div>
             </div>
-
-            {mode === 'PHOTO' && (
-            <ul className="space-y-1.5 text-sm text-neutral-700">
-              {t.tips.map((tip) => (
-                <li key={tip} className="flex items-start gap-2">
-                  <Check className="mt-0.5 size-4 shrink-0 text-accent-700" aria-hidden />
-                  {tip}
-                </li>
-              ))}
-            </ul>
-            )}
 
             {mode === 'PHOTO' && (<>
             <input
@@ -1086,6 +1126,15 @@ function TryOnDialog({
               <Camera aria-hidden />
               {t.takePhoto}
             </Button>
+            {/* Short tips for the photo, under the two ways to add one */}
+            <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-600">
+              {t.tips.map((tip) => (
+                <li key={tip} className="flex items-center gap-1.5">
+                  <Check className="size-3.5 shrink-0 text-accent-700" aria-hidden />
+                  {tip}
+                </li>
+              ))}
+            </ul>
             <CameraCapture
               open={cameraOpen}
               onClose={() => setCameraOpen(false)}

@@ -43,7 +43,7 @@ describe('Website AI preview and try-on (e2e)', () => {
 
   it('makes one shared preview of the chosen options with one 1K fast FASHN edit', async () => {
     const limits = await ctx.http.get('/v1/me/try-on/limits').set(ana.auth).expect(200);
-    expect(limits.body).toEqual({ previewsLeft: 5, previewsPerDay: 5, tryOnsLeft: 3, tryOnsPerDay: 3, available: true, live: true, wording: true, keepMinutes: 60 });
+    expect(limits.body).toEqual({ previewsLeft: 20, previewsPerDay: 20, tryOnsLeft: 20, tryOnsPerDay: 20, available: true, live: true, wording: true, keepMinutes: 60 });
 
     await ctx.http.post('/v1/me/try-on/previews').send({ designId, selectedOptionValueIds: custom }).expect(401);
     const same = await preview(ana, defaults).expect(422);
@@ -70,8 +70,8 @@ describe('Website AI preview and try-on (e2e)', () => {
     const shared = await preview(bea, [...custom].reverse()).expect(201);
     expect(shared.body.id).toBe(made.body.id);
     expect(ctx.fashn.runs).toHaveLength(runsBefore + 1);
-    expect((await ctx.http.get('/v1/me/try-on/limits').set(bea.auth).expect(200)).body.previewsLeft).toBe(5);
-    expect((await ctx.http.get('/v1/me/try-on/limits').set(ana.auth).expect(200)).body.previewsLeft).toBe(4);
+    expect((await ctx.http.get('/v1/me/try-on/limits').set(bea.auth).expect(200)).body.previewsLeft).toBe(20);
+    expect((await ctx.http.get('/v1/me/try-on/limits').set(ana.auth).expect(200)).body.previewsLeft).toBe(19);
   });
 
   it('makes the picture from her own words alone, leaving out design changes, and keys it by the words', async () => {
@@ -110,7 +110,7 @@ describe('Website AI preview and try-on (e2e)', () => {
   it('stops at the daily limit; failed pictures do not count', async () => {
     const cleo = await userWithRoles(ctx, ['CUSTOMER'], 'tryon-cleo');
     const row = { userId: cleo.id, kind: 'PREVIEW' as const, designId, sourcePath: 'x.jpg', prompt: 'p', endpoint: 'edit', credits: 1 };
-    await ctx.db.customerPreview.createMany({ data: Array.from({ length: 5 }, () => ({ ...row, status: 'DONE' as const })) });
+    await ctx.db.customerPreview.createMany({ data: Array.from({ length: 20 }, () => ({ ...row, status: 'DONE' as const })) });
     // A combination nobody has made yet is refused once her limit is reached.
     await ctx.db.customerPreview.updateMany({ where: { previewKey: { not: null } }, data: { hidden: true } });
     const limited = await preview(cleo, custom).expect(422);
@@ -226,7 +226,7 @@ describe('Website AI preview and try-on (e2e)', () => {
     expect(again.body).toMatchObject({ id: bad.body.id, status: 'FAILED' });
     expect(ctx.fashn.runs).toHaveLength(runsNow);
     // Failed pictures do not use her allowance (she made one good preview).
-    expect((await ctx.http.get('/v1/me/try-on/limits').set(dana.auth).expect(200)).body.previewsLeft).toBe(4);
+    expect((await ctx.http.get('/v1/me/try-on/limits').set(dana.auth).expect(200)).body.previewsLeft).toBe(19);
   });
 
   it('checks her photo before spending a credit, cleans it, and remakes a wrong try-on once', async () => {
@@ -247,7 +247,7 @@ describe('Website AI preview and try-on (e2e)', () => {
     expect(refused.body.error).toMatchObject({ code: 'PHOTO_NOT_SUITABLE', message: expect.stringContaining('whole body is visible') });
     expect(ctx.storage.files.has(`private/${halfBody}`)).toBe(false);
     expect(ctx.fashn.runs).toHaveLength(runsBefore);
-    expect((await ctx.http.get('/v1/me/try-on/limits').set(eva.auth).expect(200)).body.tryOnsLeft).toBe(3);
+    expect((await ctx.http.get('/v1/me/try-on/limits').set(eva.auth).expect(200)).body.tryOnsLeft).toBe(20);
 
     // A good photo: cleaned first (location data removed), then a wrong result is remade once.
     ctx.checker.photoVerdict = { ok: true, reason: 'ok' };
@@ -277,7 +277,7 @@ describe('Website AI preview and try-on (e2e)', () => {
     await ctx.runTryOn();
     const failed = await ctx.http.get(`/v1/me/try-on/${again.body.id}`).set(eva.auth).expect(200);
     expect(failed.body).toMatchObject({ status: 'FAILED', imageUrl: null, error: expect.stringContaining('try a different photo') });
-    expect((await ctx.http.get('/v1/me/try-on/limits').set(eva.auth).expect(200)).body.tryOnsLeft).toBe(2);
+    expect((await ctx.http.get('/v1/me/try-on/limits').set(eva.auth).expect(200)).body.tryOnsLeft).toBe(19);
   });
 
   it('tries the abaya on a model with her build, and on her photo made to her measurements', async () => {
@@ -329,7 +329,7 @@ describe('Website AI preview and try-on (e2e)', () => {
     expect((await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: fitted.body.id } })).credits).toBe(3);
 
     // Two hours on: the try-on on her photo is deleted and never listed;
-    // the model one (no photo of her) stays 30 days on the admin's list, and cannot be hidden.
+    // the model one (no photo of her) stays 48 hours on the admin's list, and cannot be hidden.
     await ctx.runTryOn(new Date(Date.now() + 2 * 3_600_000));
     expect((await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: fitted.body.id } })).purgedAt).toEqual(expect.any(Date));
     const kept = await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: model.body.id } });
@@ -371,7 +371,7 @@ describe('Website AI preview and try-on (e2e)', () => {
     expect(fresh.body.id).not.toBe(item.id);
   });
   // Runs last: it moves the clock past every earlier picture's hour.
-  it('shows her recent pictures for an hour each; previews stay 30 days for the admin, then are deleted', async () => {
+  it('shows her recent pictures for an hour each; previews stay 48 hours for the admin, then are deleted', async () => {
     const dana = await userWithRoles(ctx, ['CUSTOMER'], 'tryon-dana');
     const eve = await userWithRoles(ctx, ['CUSTOMER'], 'tryon-eve');
     const t0 = Date.now();
@@ -414,8 +414,8 @@ describe('Website AI preview and try-on (e2e)', () => {
     const seen = await ctx.http.get('/v1/admin/customer-previews').query({ userId: dana.id }).set(manager.auth).expect(200);
     expect(seen.body.items.find((i: { id: string }) => i.id === own.body.id)).toMatchObject({ imageUrl: expect.any(String), purgedAt: null });
 
-    // 31 days on: deleted, its credits stay.
-    await ctx.runTryOn(new Date(t0 + 31 * 86_400_000));
+    // 49 hours on: deleted, its credits stay.
+    await ctx.runTryOn(new Date(t0 + 49 * 3_600_000));
     const gone = await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: own.body.id } });
     expect(gone.resultPath).toBeNull();
     expect(gone.credits).toBeGreaterThan(0);

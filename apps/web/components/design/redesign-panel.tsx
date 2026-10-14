@@ -295,7 +295,7 @@ function Panel({ design, draft }: { design: DesignDetail; draft: RedesignDraft |
       )}
 
       <AiStudio
-        design={{ id: design.id, name: design.name, slug: design.slug }}
+        design={{ id: design.id, name: design.name, slug: design.slug, hdForSale: Boolean(design.download) }}
         selectedIds={selectedIds(design, selections)}
         complete={missing.length === 0}
         colourId={chosenColourId}

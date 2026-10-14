@@ -224,8 +224,8 @@ respects "reduce motion" and animates transforms and opacity only):
   photo" (not counted). Only she can see it (404 for everyone else; the admin list never
   includes try-ons). She can delete it at once; otherwise the worker deletes her photo and the
   result after 30 days.
-- **Limits** (India day): `CUSTOMER_PREVIEW_DAILY_LIMIT` (5) and `CUSTOMER_TRYON_DAILY_LIMIT`
-  (3) per customer, `CUSTOMER_AI_DAILY_CREDIT_LIMIT` (200) for all customers together. Failed
+- **Limits** (India day): `CUSTOMER_PREVIEW_DAILY_LIMIT` (20) and `CUSTOMER_TRYON_DAILY_LIMIT`
+  (20) per customer, `CUSTOMER_AI_DAILY_CREDIT_LIMIT` (200) for all customers together. Failed
   pictures do not count.
 - Pictures never change the order or the price: the order is made from the chosen options.
 - Routes: `GET /v1/me/try-on/limits`, `POST /v1/me/try-on/previews`, `POST /v1/me/try-on/uploads`,
@@ -310,7 +310,7 @@ three ways instead:
   own photo for a try-on) and the row marked `purgedAt` (paths cleared; the row stays so credits
   and daily limits stay right). Previews (only the abaya, no customer photo) and "a model like me"
   try-ons (a made-up model with her height and size; marked by their first choice line) are kept
-  longer and listed on the admin's Customer AI previews page: `CUSTOMER_AI_PREVIEW_KEEP_DAYS` (default 30) after they were
+  longer and listed on the admin's Customer AI previews page: `CUSTOMER_AI_PREVIEW_KEEP_HOURS` (default 48) after they were
   made; the customer still loses access after her hour, and a new customer asking for the same
   choices meanwhile gets the kept picture. Try-ons on her own photo are always deleted after the hour
   and never shown to staff. A shared

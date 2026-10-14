@@ -19,8 +19,8 @@ export type CustomerPreviewStatus = (typeof CUSTOMER_PREVIEW_STATUSES)[number];
 /** FASHN credits per request at 1K fast (the website always uses 1K fast). */
 export const CUSTOMER_PREVIEW_CREDITS: Record<CustomerPreviewKind, number> = { PREVIEW: 1, TRYON: 1 };
 /** Defaults; the API reads its limits from the environment. */
-export const DEFAULT_PREVIEWS_PER_DAY = 5;
-export const DEFAULT_TRYONS_PER_DAY = 3;
+export const DEFAULT_PREVIEWS_PER_DAY = 20;
+export const DEFAULT_TRYONS_PER_DAY = 20;
 export const DEFAULT_CUSTOMER_AI_CREDITS_PER_DAY = 200;
 /** Try-on photos and results are deleted this many days after they were made. */
 export const TRYON_RETENTION_DAYS = 30;

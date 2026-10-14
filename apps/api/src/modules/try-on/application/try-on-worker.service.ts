@@ -67,7 +67,7 @@ export class TryOnWorker implements OnModuleInit, OnModuleDestroy {
     @Inject(TRYON_FILES) private readonly files: TryOnFiles,
     @Inject(PREVIEW_CHECKER) private readonly checker: PreviewChecker,
     @Inject(FACE_KEEPER) private readonly faces: FaceKeeper,
-    @Inject(APP_CONFIG) private readonly config: Pick<AppConfig, 'TRYON_WORKER_ENABLED' | 'CUSTOMER_AI_KEEP_MINUTES' | 'CUSTOMER_AI_PREVIEW_KEEP_DAYS'>,
+    @Inject(APP_CONFIG) private readonly config: Pick<AppConfig, 'TRYON_WORKER_ENABLED' | 'CUSTOMER_AI_KEEP_MINUTES' | 'CUSTOMER_AI_PREVIEW_KEEP_HOURS'>,
     private readonly uploads: UploadsService,
     private readonly watermark: WatermarkService,
   ) {}
@@ -120,12 +120,12 @@ export class TryOnWorker implements OnModuleInit, OnModuleDestroy {
    * hour is left (a shared preview may have several customers), its files are deleted (the
    * picture, and her own photo for a try-on) and the paths cleared. The row stays, marked, so
    * credits and daily limits stay right. Previews and "a model like me" try-ons (no photo of her)
-   * are kept longer, for the admin's Customer AI previews page (CUSTOMER_AI_PREVIEW_KEEP_DAYS);
+   * are kept longer, for the admin's Customer AI previews page (CUSTOMER_AI_PREVIEW_KEEP_HOURS);
    * try-ons on her own photo never are.
    */
   private async purgeExpired(now: Date): Promise<number> {
     const keepMs = this.config.CUSTOMER_AI_KEEP_MINUTES * 60_000;
-    const previewKeepMs = Math.max(keepMs, (this.config.CUSTOMER_AI_PREVIEW_KEEP_DAYS ?? 0) * 24 * 60 * 60_000);
+    const previewKeepMs = Math.max(keepMs, this.config.CUSTOMER_AI_PREVIEW_KEEP_HOURS * 60 * 60_000);
     const madeBefore = { photoTryOns: new Date(now.getTime() - keepMs), keptForAdmin: new Date(now.getTime() - previewKeepMs) };
     let purged = 0;
     for (const row of await this.repo.listUnclaimed(now, madeBefore, 200)) {

@@ -43,8 +43,8 @@ describe('AI preview kept with the order (e2e)', () => {
     const card = await ctx.http.get(`/v1/workshop/items/${item!.id}`).set(pm.auth).expect(200);
     expect(card.body.aiPreview).toEqual({ url: expect.any(String), inspirationOnly: false });
 
-    // 31 days on (previews stay 30 days for the admin): her own copy is deleted, the order's stays.
-    await ctx.runTryOn(new Date(Date.now() + 31 * 86_400_000));
+    // 49 hours on (previews stay 48 hours for the admin): her own copy is deleted, the order's stays.
+    await ctx.runTryOn(new Date(Date.now() + 49 * 3_600_000));
     expect((await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: preview.body.id } })).purgedAt).toEqual(expect.any(Date));
     expect(await ctx.storage.get('private', item!.aiPreviewPath!)).not.toBeNull();
 
