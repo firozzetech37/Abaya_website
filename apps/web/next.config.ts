@@ -19,10 +19,12 @@ try {
 }
 
 /**
- * This build's version: the git commit Vercel deploys (a time stamp elsewhere). Open pages compare
- * it with /api/version and reload when a newer commit is live (components/pwa/pwa.tsx).
+ * This build's version: the git commit being deployed (Vercel and Render supply it). Open pages
+ * compare it with /api/version and reload when a newer commit is live (components/pwa/pwa.tsx).
+ * Without a commit (local builds) it is "local" and no check runs: a time stamp would differ
+ * between the parts of one build (each build worker reads this file) and look like a new version.
  */
-const BUILD_ID = process.env.VERCEL_GIT_COMMIT_SHA || process.env.RENDER_GIT_COMMIT || `build-${Date.now()}`;
+const BUILD_ID = process.env.VERCEL_GIT_COMMIT_SHA || process.env.RENDER_GIT_COMMIT || 'local';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,

@@ -55,12 +55,15 @@ export class PrismaCustomerPreviewRepository implements CustomerPreviewRepositor
     return rows.map((a) => ({ row: a.preview, expiresAt: a.expiresAt }));
   }
 
-  listUnclaimed(now: Date, createdBefore: Date, limit: number) {
+  listUnclaimed(now: Date, madeBefore: { tryOns: Date; previews: Date }, limit: number) {
     return this.db.customerPreview.findMany({
       where: {
         purgedAt: null,
         status: { in: ['DONE', 'FAILED'] },
-        createdAt: { lt: createdBefore },
+        OR: [
+          { kind: 'TRYON', createdAt: { lt: madeBefore.tryOns } },
+          { kind: 'PREVIEW', createdAt: { lt: madeBefore.previews } },
+        ],
         access: { none: { expiresAt: { gt: now } } },
       },
       take: limit,

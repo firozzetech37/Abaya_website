@@ -89,6 +89,12 @@ export const envSchema = z.object({
   CUSTOMER_AI_DAILY_CREDIT_LIMIT: z.coerce.number().int().min(0).max(100000).default(200),
   /** A customer sees each AI preview or try-on for this many minutes after she got it; then it is deleted. */
   CUSTOMER_AI_KEEP_MINUTES: z.coerce.number().int().min(5).max(7 * 24 * 60).default(60),
+  /**
+   * Previews (only the abaya on a model: no customer photo) stay this many days for the admin's
+   * Customer AI previews page, though the customer still sees each one for CUSTOMER_AI_KEEP_MINUTES.
+   * Try-ons (her face and body) are always deleted after CUSTOMER_AI_KEEP_MINUTES.
+   */
+  CUSTOMER_AI_PREVIEW_KEEP_DAYS: z.coerce.number().int().min(0).max(365).default(30),
   TRYON_WORKER_ENABLED: bool.optional(),
   /** Remake old customer web previews (e.g. watermarked ones) when the API starts. Off in tests. */
   PREVIEW_REFRESH_ON_START: bool.optional(),

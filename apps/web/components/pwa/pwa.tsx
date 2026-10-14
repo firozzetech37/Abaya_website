@@ -57,7 +57,7 @@ export function Pwa() {
         const res = await fetch('/api/version', { cache: 'no-store' });
         if (!res.ok) return;
         const { version } = (await res.json()) as { version?: string };
-        if (version && version !== 'unknown' && version !== VERSION) {
+        if (version && version !== 'unknown' && version !== 'local' && VERSION !== 'local' && version !== VERSION) {
           stale.current = true;
           if (document.visibilityState === 'hidden') void hardReload();
           else

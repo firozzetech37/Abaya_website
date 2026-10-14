@@ -358,7 +358,7 @@ describe('Website AI preview and try-on (e2e)', () => {
     expect(fresh.body.id).not.toBe(item.id);
   });
   // Runs last: it moves the clock past every earlier picture's hour.
-  it('keeps her recent pictures for an hour each, then deletes them; a shared preview lasts for each customer', async () => {
+  it('shows her recent pictures for an hour each; previews stay 30 days for the admin, then are deleted', async () => {
     const dana = await userWithRoles(ctx, ['CUSTOMER'], 'tryon-dana');
     const eve = await userWithRoles(ctx, ['CUSTOMER'], 'tryon-eve');
     const t0 = Date.now();
@@ -385,25 +385,32 @@ describe('Website AI preview and try-on (e2e)', () => {
     expect((await ctx.http.get('/v1/me/try-on/recent').query({ designId }).set(stranger.auth).expect(200)).body.items).toEqual([]);
     await ctx.http.get(`/v1/me/try-on/${own.body.id}`).set(stranger.auth).expect(404);
 
-    // 70 minutes on: Dana's hour is over, Eve still has 30 minutes on the shared preview.
+    // 70 minutes on: Dana's hour is over (both gone for her), Eve still has 30 minutes on the shared preview.
     const row = await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: own.body.id } });
     await ctx.db.customerPreview.updateMany({ where: { id: { in: [own.body.id, older.body.id] } }, data: { createdAt: new Date(t0 - 5 * 60_000) } });
     await ctx.db.customerPreviewAccess.updateMany({ where: { userId: dana.id }, data: { expiresAt: new Date(t0 + 60 * 60_000) } });
-    const later = new Date(t0 + 70 * 60_000);
-    await ctx.runTryOn(later);
-    expect((await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: own.body.id } })).purgedAt).toBeNull();
-    expect(await ctx.storage.get('private', row.resultPath!)).not.toBeNull();
-    const olderRow = await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: older.body.id } });
-    expect(olderRow.purgedAt).toEqual(expect.any(Date));
-    expect(olderRow.resultPath).toBeNull();
+    await ctx.runTryOn(new Date(t0 + 70 * 60_000));
 
-    // 101 minutes on: Eve's hour is over too; the shared picture is deleted, its credits stay.
+    // 101 minutes on: Eve's hour is over too. The customers cannot see them, but the previews
+    // (no customer photo in them) stay for the admin.
     await ctx.runTryOn(new Date(t0 + 101 * 60_000));
+    const kept = await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: own.body.id } });
+    expect(kept.purgedAt).toBeNull();
+    expect(await ctx.storage.get('private', row.resultPath!)).not.toBeNull();
+    expect((await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: older.body.id } })).purgedAt).toBeNull();
+    const seen = await ctx.http.get('/v1/admin/customer-previews').query({ userId: dana.id }).set(manager.auth).expect(200);
+    expect(seen.body.items.find((i: { id: string }) => i.id === own.body.id)).toMatchObject({ imageUrl: expect.any(String), purgedAt: null });
+
+    // 31 days on: deleted, its credits stay.
+    await ctx.runTryOn(new Date(t0 + 31 * 86_400_000));
     const gone = await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: own.body.id } });
     expect(gone.resultPath).toBeNull();
     expect(gone.credits).toBeGreaterThan(0);
     expect(gone.purgedAt).toEqual(expect.any(Date));
     expect(await ctx.storage.get('private', row.resultPath!)).toBeNull();
+    const olderRow = await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: older.body.id } });
+    expect(olderRow.purgedAt).toEqual(expect.any(Date));
+    expect(olderRow.resultPath).toBeNull();
     await ctx.http.get(`/v1/me/try-on/${own.body.id}`).set(eve.auth).expect(404);
     const list = await ctx.http.get('/v1/admin/customer-previews').query({ userId: dana.id }).set(manager.auth).expect(200);
     expect(list.body.items.find((i: { id: string }) => i.id === own.body.id)).toMatchObject({ imageUrl: null, purgedAt: expect.any(String) });

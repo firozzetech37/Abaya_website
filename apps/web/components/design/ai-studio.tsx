@@ -17,6 +17,7 @@ import { OPEN_TRYON_EVENT, TRYON_PARAM } from '@/lib/try-on-link';
 import { usePathname, useRouter } from '@/components/i18n/navigation';
 import { HEIC_ACCEPT, jpegFromHeic, looksLikeHeic } from '@/lib/heic';
 import { type BackgroundChoice, BackgroundPicker } from './background-picker';
+import { CameraCapture, canUseCamera } from './camera-capture';
 import { TryOnChoice, type TryOnVersion } from './try-on-choice';
 import { guideSeen, TryOnGuide } from './try-on-guide';
 import { TRYON_ACCEPT, useAiLimits, useAiPicture, useCreatePreview, useCreateTryOn, useDeleteTryOn, useRecentAiPictures } from '@/lib/queries/try-on';
@@ -786,6 +787,20 @@ function TryOnDialog({
   const [body, setBody] = useState<BodyDraft>(EMPTY_BODY);
   const [file, setFile] = useState<File | null>(null);
   const [preparing, setPreparing] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const cameraInput = useRef<HTMLInputElement>(null);
+  /** A picked or captured photo: HEIC is turned into a JPEG first. */
+  const takePicked = (chosen: File) => {
+    if (!looksLikeHeic(chosen)) return setFile(chosen);
+    setPreparing(true);
+    jpegFromHeic(chosen)
+      .then(setFile)
+      .catch(() => {
+        setFile(null);
+        setMessage(t.photoConvertFailed);
+      })
+      .finally(() => setPreparing(false));
+  };
   const [startedAt, setStartedAt] = useState(0);
   // Her saved measurements (if any) tell the AI her figure, so the abaya is fitted to her (no extra step).
   const savedProfiles = useMeasurements();
@@ -1014,15 +1029,23 @@ function TryOnDialog({
                 e.target.value = '';
                 setMessage(null);
                 if (!chosen || !looksLikeHeic(chosen)) return setFile(chosen);
-                // iPhone HEIC: turned into a JPEG here so it can be previewed and uploaded.
-                setPreparing(true);
-                jpegFromHeic(chosen)
-                  .then(setFile)
-                  .catch(() => {
-                    setFile(null);
-                    setMessage(t.photoConvertFailed);
-                  })
-                  .finally(() => setPreparing(false));
+                takePicked(chosen);
+              }}
+            />
+            {/* No camera in the page (e.g. not HTTPS): the phone's own camera app */}
+            <input
+              ref={cameraInput}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden
+              onChange={(e) => {
+                const chosen = e.target.files?.[0] ?? null;
+                e.target.value = '';
+                setMessage(null);
+                if (chosen) takePicked(chosen);
               }}
             />
             <button
@@ -1052,6 +1075,29 @@ function TryOnDialog({
                 <span className="mt-0.5 block text-xs text-muted">{t.photoFormats}</span>
               </span>
             </button>
+            {/* Or take one now, with the camera */}
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full"
+              disabled={preparing}
+              onClick={() => (canUseCamera() ? setCameraOpen(true) : cameraInput.current?.click())}
+            >
+              <Camera aria-hidden />
+              {t.takePhoto}
+            </Button>
+            <CameraCapture
+              open={cameraOpen}
+              onClose={() => setCameraOpen(false)}
+              onPhoto={(photo) => {
+                setFile(photo);
+                setMessage(null);
+              }}
+              onChooseInstead={() => {
+                setCameraOpen(false);
+                input.current?.click();
+              }}
+            />
             <label className="flex cursor-pointer items-start gap-2.5 text-sm">
               <Checkbox
                 checked={fit}

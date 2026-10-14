@@ -95,8 +95,8 @@ export interface CustomerPreviewRepository {
   listRecent(userId: string, designId: string, now: Date, limit: number): Promise<{ row: CustomerPreviewRecord; expiresAt: Date }[]>;
   /** All her pictures she may still see, from every design, newest first. */
   listMine(userId: string, now: Date, limit: number): Promise<{ row: CustomerPreviewRecord; expiresAt: Date }[]>;
-  /** Finished pictures made before `createdBefore` that nobody may see any more (to delete). */
-  listUnclaimed(now: Date, createdBefore: Date, limit: number): Promise<CustomerPreviewRecord[]>;
+  /** Finished pictures nobody may see any more (to delete): try-ons and previews made before their cut-off. */
+  listUnclaimed(now: Date, madeBefore: { tryOns: Date; previews: Date }, limit: number): Promise<CustomerPreviewRecord[]>;
   /** Pictures deleted: paths cleared, the time recorded. */
   markPurged(id: string, at: Date): Promise<void>;
   /** The request whose id starts with these 8 hex digits (watermark look-up); null when none or ambiguous. */

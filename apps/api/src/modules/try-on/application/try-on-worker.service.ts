@@ -67,7 +67,7 @@ export class TryOnWorker implements OnModuleInit, OnModuleDestroy {
     @Inject(TRYON_FILES) private readonly files: TryOnFiles,
     @Inject(PREVIEW_CHECKER) private readonly checker: PreviewChecker,
     @Inject(FACE_KEEPER) private readonly faces: FaceKeeper,
-    @Inject(APP_CONFIG) private readonly config: Pick<AppConfig, 'TRYON_WORKER_ENABLED' | 'CUSTOMER_AI_KEEP_MINUTES'>,
+    @Inject(APP_CONFIG) private readonly config: Pick<AppConfig, 'TRYON_WORKER_ENABLED' | 'CUSTOMER_AI_KEEP_MINUTES' | 'CUSTOMER_AI_PREVIEW_KEEP_DAYS'>,
     private readonly uploads: UploadsService,
     private readonly watermark: WatermarkService,
   ) {}
@@ -119,17 +119,20 @@ export class TryOnWorker implements OnModuleInit, OnModuleDestroy {
    * Each customer sees an AI picture for CUSTOMER_AI_KEEP_MINUTES after she got it. Once nobody's
    * hour is left (a shared preview may have several customers), its files are deleted (the
    * picture, and her own photo for a try-on) and the paths cleared. The row stays, marked, so
-   * credits and daily limits stay right.
+   * credits and daily limits stay right. Previews (no customer photo) are kept longer, for the
+   * admin's Customer AI previews page (CUSTOMER_AI_PREVIEW_KEEP_DAYS); try-ons never are.
    */
   private async purgeExpired(now: Date): Promise<number> {
-    const madeBefore = new Date(now.getTime() - this.config.CUSTOMER_AI_KEEP_MINUTES * 60_000);
+    const keepMs = this.config.CUSTOMER_AI_KEEP_MINUTES * 60_000;
+    const previewKeepMs = Math.max(keepMs, (this.config.CUSTOMER_AI_PREVIEW_KEEP_DAYS ?? 0) * 24 * 60 * 60_000);
+    const madeBefore = { tryOns: new Date(now.getTime() - keepMs), previews: new Date(now.getTime() - previewKeepMs) };
     let purged = 0;
     for (const row of await this.repo.listUnclaimed(now, madeBefore, 200)) {
       await this.files.remove([row.resultPath, row.personPath, row.workingPath].filter((p): p is string => Boolean(p)));
       await this.repo.markPurged(row.id, now);
       purged++;
     }
-    if (purged > 0) this.logger.log(`Deleted ${purged} AI picture(s) older than ${this.config.CUSTOMER_AI_KEEP_MINUTES} min`);
+    if (purged > 0) this.logger.log(`Deleted ${purged} expired AI picture(s)`);
     return purged;
   }
 

@@ -308,7 +308,11 @@ three ways instead:
   `GET /v1/me/try-on/:id` answers 404 once her hour is over. The try-on worker sweeps every
   minute: a finished picture nobody may see any more has its files deleted (the picture, and her
   own photo for a try-on) and the row marked `purgedAt` (paths cleared; the row stays so credits
-  and daily limits stay right). A shared preview is made afresh for the next customer after that.
+  and daily limits stay right). Previews (only the abaya, no customer photo) are kept longer for the
+  admin's Customer AI previews page: `CUSTOMER_AI_PREVIEW_KEEP_DAYS` (default 30) after they were
+  made; the customer still loses access after her hour, and a new customer asking for the same
+  choices meanwhile gets the kept picture. Try-ons are always deleted after the hour. A shared
+  preview is made afresh for the next customer once it is deleted.
   `User.lastActiveAt` ("last seen", written at most every 10 minutes) is recorded but not used for
   deletion.
 - **No printing.** `@media print` in `app/globals.css` hides every image, video and background
