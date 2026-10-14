@@ -41,9 +41,6 @@ export const nav = {
   orders: 'My orders',
   downloads: 'My downloads',
   menu: 'Menu',
-  /** A newer version of the website is live (components/pwa/pwa.tsx). */
-  updateAvailable: 'A new version of Abaya Atelier is ready',
-  updateRefresh: 'Refresh',
   /** The try-on banner under the navbar. */
   tryOnBanner: 'Virtual Try On',
   tryOnBannerBody: 'See yourself in our new abayas',

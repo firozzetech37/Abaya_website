@@ -39,9 +39,6 @@ export const nav = {
   orders: 'طلباتي',
   downloads: 'تنزيلاتي',
   menu: 'القائمة',
-  /** A newer version of the website is live (components/pwa/pwa.tsx). */
-  updateAvailable: 'نسخة جديدة من عباية أتيليه جاهزة',
-  updateRefresh: 'تحديث',
   /** The try-on banner under the navbar. */
   tryOnBanner: 'التجربة الافتراضية',
   tryOnBannerBody: 'شاهدي نفسك بعباءاتنا الجديدة',
