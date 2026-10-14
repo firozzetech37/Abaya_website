@@ -12,8 +12,12 @@ const IN_H = 240;
 /** In a full-length photo the face is in the top part: only that is searched (the face stays big enough). */
 const SEARCH_TOP_SHARE = 0.55;
 const MIN_FACE_SCORE = 0.7;
-/** How alike the two faces must look (pose, framing) before her real face replaces FASHN's. */
-const MIN_POSE_MATCH = 0.85;
+/**
+ * How alike the two faces must look (pose, framing) before her real face replaces FASHN's.
+ * Measured: same pose 0.96–0.99, same pose under a new background's light (sunset) 0.79,
+ * a turned head 0.41.
+ */
+const MIN_POSE_MATCH = 0.75;
 
 export interface FaceBox {
   score: number;

@@ -283,9 +283,10 @@ export class FakeChecker implements PreviewChecker {
   }
   /** Parts with design words are left out, surface parts kept (what Gemini decides in production). */
   async classifyRequest(question: string) {
-    const wish = /Wish: <<<([\s\S]*)>>>/.exec(question)?.[1] ?? '';
+    // A preview wish ("Wish: <<<…>>>") or a try-on background ("Her words: <<<…>>>").
+    const wish = /(?:Wish|Her words): <<<([\s\S]*)>>>/.exec(question)?.[1] ?? '';
     const parts = wish.split(/,|\band\b/).map((p) => p.trim()).filter(Boolean);
-    const design = (p: string) => /lace|sleeve|neckline|length|cut|remove|accessor|add /i.test(p);
+    const design = (p: string) => /lace|sleeve|neckline|length|cut|remove|accessor|add |slim|body|face/i.test(p);
     return { kept: parts.filter((p) => !design(p)).join(', '), leftOut: parts.filter(design) };
   }
   async check(images: { label: string }[], question: string, count: number) {

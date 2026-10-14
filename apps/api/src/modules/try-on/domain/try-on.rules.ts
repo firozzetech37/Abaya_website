@@ -11,6 +11,7 @@ import {
   type PreviewChoice,
   type PreviewPlan,
   planPreview,
+  type TryOnBackground,
   type TryOnBody,
   type TryOnMode,
   TRYON_RETENTION_DAYS,
@@ -48,10 +49,72 @@ export interface TryOnPlan {
  *   length and sleeves.
  * - MODEL ("a model like me"): model-create with her build, then tryon-max on that model.
  */
-export function tryOnPlan(style: string, options: { mode?: TryOnMode; body?: TryOnBody | null } = {}): TryOnPlan {
+export function tryOnPlan(
+  style: string,
+  options: { mode?: TryOnMode; body?: TryOnBody | null; background?: string | null; figure?: TryOnBody | null } = {},
+): TryOnPlan {
+  const plan = basePlan(style, options);
+  const background = options.background?.trim();
+  if (!background) return plan;
+  // A new background: one last edit that changes only the scene behind her.
+  const resultImage = `image ${options.mode === 'MODEL' ? 2 : 3}`;
+  return {
+    steps: [...plan.steps, backgroundPrompt(background)],
+    endpoints: [...plan.endpoints, ENDPOINT_EDIT],
+    checks: [
+      // Her own photo's background is no longer expected...
+      ...plan.checks.map((c) => ({ ...c, text: c.text.replace(', pose and background', ' and pose') })),
+      // ...the chosen one is.
+      { text: `The background of ${resultImage} shows ${background}.`, critical: false },
+    ],
+  };
+}
+
+/** The ready-made backgrounds, as the image editor is told them. */
+export const BACKGROUND_SCENES: Record<TryOnBackground, string> = {
+  studio: 'a luxury fashion studio with a soft cream seamless backdrop and gentle, even studio lighting',
+  courtyard: 'an old Arabian courtyard with sand-coloured walls, stone arches and carved wooden doors, in warm afternoon light',
+  desert: 'golden desert dunes at sunset with soft warm light and a clear sky',
+  marble: 'an elegant modern hall with polished cream marble floors and walls and soft daylight',
+  garden: 'a lush rose garden with blooming roses and green hedges in soft morning light',
+  skyline: 'a rooftop terrace at dusk with a glittering city skyline behind her',
+};
+
+/** The background-only edit: the woman and the abaya stay exactly as they are. */
+export function backgroundPrompt(scene: string): string {
+  return [
+    `Replace only the background with ${scene}.`,
+    'Keep the woman exactly as she is: her face, facial features, skin tone, hair or hijab, body shape, pose and hands.',
+    'Keep the abaya exactly as it is: the same cut, colours, fabric, drape, and every embroidery panel, border and motif.',
+    'Keep her full length in the frame, at the same size and position.',
+    'Match the light, colour and shadows on her to the new background so it looks like one real photograph, with her feet standing naturally on the ground.',
+  ].join(' ');
+}
+
+/** What a customer may type for her background: a place, scenery, light or mood, nothing else. */
+export function backgroundQuestion(text: string): string {
+  return [
+    'A customer is trying on an abaya with AI and typed the background she wants behind her in the picture.',
+    'Allowed: a place, setting, scenery, landmark, room, weather, season, time of day, light or mood.',
+    'Not allowed: anything about her own body, face, pose or clothes; any change to the abaya; other people or animals; objects for her to hold; text, logos or brands; anything offensive, sexual or violent.',
+    `Her words: <<<${text}>>>`,
+    'Answer with JSON only: {"kept": "the allowed background, rewritten in English as a short scene description for an image editor (empty when nothing is allowed)", "leftOut": ["each part left out, in a few words"]}.',
+  ].join('\n\n');
+}
+export const BACKGROUND_NOT_ALLOWED = 'The background can be a place, a setting, the light or the mood. Please describe only the scene behind you.';
+
+/** Her figure in words, from her measurements ("She is tall with a full, curvy build and gentle curves."). */
+export function figureLine(b: TryOnBody): string {
+  const { height, build, shape } = bodyBuild(b);
+  return `She is ${height} (${b.heightCm} cm) with ${build}${shape ? ` and ${shape}` : ''}.`;
+}
+
+function basePlan(style: string, options: { mode?: TryOnMode; body?: TryOnBody | null; figure?: TryOnBody | null }): TryOnPlan {
   const shape = style.toLowerCase().replace(/_/g, ' ');
   const mode = options.mode ?? 'PHOTO';
   const body = options.body ?? null;
+  // Her measurements (made to measure, or saved on her account) describe her figure for the fit.
+  const known = body ?? options.figure ?? null;
   const dress = (who: string) =>
     [
       `Dress ${who} in this ${shape} abaya, full length to her ankles, worn open or closed exactly as in the product photo.`,
@@ -59,9 +122,12 @@ export function tryOnPlan(style: string, options: { mode?: TryOnMode; body?: Try
       'If the abaya is open at the front, she wears the same plain inner dress underneath as the product model, in the same colour.',
       'Keep only a hijab that covers her hair, if she wears one; otherwise keep her hair as it is.',
       'Transfer ONLY the abaya and its inner dress: do not copy the product model’s handbag, shoes, jewellery or headscarf.',
-      `Keep the abaya’s ${shape} silhouette and every embroidery panel, border and motif exactly: same position, size, pattern and colours.`,
+      `Keep the abaya’s design exactly: its ${shape} cut, fabric, colours and every embroidery panel, border and motif in the same place, size and pattern.`,
+      'Fit the abaya to HER body, not to the product model’s: its shoulders sit on her shoulders, it falls over her own bust, waist and hips with natural ease, the hem reaches her ankles for her height and the sleeves end at her wrists. Embroidery panels follow her body in the same places as on the product.',
+      ...(known && mode === 'PHOTO' ? [figureLine(known)] : []),
+      'Keep her real body shape and size exactly as in her photo: do not slim, stretch, lengthen, shorten or reshape her body, and do not copy the product model’s proportions or height.',
       'Keep her face exactly as in her photo: the same facial features, expression, skin texture and skin tone. Do not beautify, smooth, retouch, slim or brighten her face.',
-      'Keep her body shape, height, pose, head position, hands and the background exactly as in her photo.',
+      'Keep her pose, head position, hands and the background exactly as in her photo.',
       'It must look like a real photograph of her: natural drape and folds that follow her body, real fabric texture.',
     ].join(' ');
   const garmentChecks = (result: string, original: string): PreviewCheck[] => [
@@ -87,6 +153,7 @@ export function tryOnPlan(style: string, options: { mode?: TryOnMode; body?: Try
   const checks: PreviewCheck[] = [
     { text: 'The woman in image 3 is clearly the same person as in image 2: same face, skin tone, body shape, pose and background.', critical: true },
     { text: 'None of her own clothes from image 2 (a shawl, dupatta or scarf over her shoulders, her top or jacket) are visible in image 3: only the abaya, its inner dress and a hijab.', critical: true },
+    { text: 'The woman in image 3 has the same body shape, size and proportions as in image 2 (not slimmed, stretched or reshaped), and the abaya is fitted to her body: its shoulders on her shoulders, the hem at her ankles, the sleeves at her wrists.', critical: true },
     ...garmentChecks('image 3', 'image 1'),
   ];
   if (!body) return { steps: [dress('the woman in her photo')], endpoints: [ENDPOINT.TRYON], checks };

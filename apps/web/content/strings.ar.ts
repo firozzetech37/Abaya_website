@@ -4,7 +4,7 @@
  * prices stay in ₹. Draft translation: have a native speaker review before launch.
  * Legal pages are placeholders and must be reviewed by a lawyer in both languages.
  */
-import type { AbayaStyle, OrderStatus, ProductionStage } from '@abaya/contracts';
+import type { AbayaStyle, TryOnBackground, OrderStatus, ProductionStage } from '@abaya/contracts';
 import type { PolicyPage, PolicySlug, PriceRange, SortId } from './strings';
 
 export type { PolicyPage, PolicySection, PolicySlug, PriceRange, PriceRangeId, SortId } from './strings';
@@ -582,6 +582,27 @@ export const tryOn = {
   moreMeasurements: 'أضيفي الصدر والخصر والورك (قوام أدق)',
   fitToggle: 'اعرضيها مفصّلة على مقاساتي',
   fitToggleHint: 'الطول والأكمام كما سيقصّها خيّاطنا لك. خطوة ذكاء اصطناعي إضافية.',
+  // The background behind her in the try-on
+  background: {
+    title: 'الخلفية',
+    hint: 'احتفظي بخلفيتك، أو اختاري المكان الذي تحبين أن تكوني فيه.',
+    keepPhoto: 'خلفيتي',
+    keepModel: 'استوديو بسيط',
+    custom: 'صفي خلفيتك',
+    customLabel: 'صفي الخلفية التي تريدينها',
+    customPlaceholder: 'مثلًا: شاطئ عند الغروب، سطح في دبي ليلًا',
+    customHint: 'المكان أو الإضاءة أو الأجواء فقط. تبقى العباءة وأنتِ كما أنتما تمامًا.',
+    extra: 'الخلفية الجديدة تستغرق 30 ثانية إضافية تقريبًا.',
+    presets: {
+      studio: 'استوديو فاخر',
+      courtyard: 'فناء عربي',
+      desert: 'كثبان الصحراء',
+      marble: 'قاعة رخامية',
+      garden: 'حديقة الورود',
+      skyline: 'أفق المدينة',
+    } as Record<TryOnBackground, string>,
+  },
+  waitStageBackground: 'نضع خلفيتك الجديدة',
   bodyPrivacy: 'تُستخدم لصنع هذه الصورة فقط. لا تُحفظ في ملفك، وتُحذف مع الصورة بعد ساعة.',
   heightRequired: 'يُرجى إدخال طولك بالسنتيمتر (من 120 إلى 210).',
   rangeHint: (min: number, max: number, unit: string) => `${min}–${max} ${unit}`,
@@ -1303,6 +1324,7 @@ export const apiErrors: Partial<Record<string, string>> = {
   DAILY_TRYON_LIMIT: 'استخدمتِ تجاربك لليوم. عودي غدًا لتجربة جديدة.',
   AI_BUSY: 'صور الذكاء الاصطناعي غير متاحة لبقية اليوم. يُرجى المحاولة غدًا.',
   NOTHING_TO_PREVIEW: 'الصور تُظهر هذه الاختيارات بالفعل. غيّري خيارًا لتري نسختك.',
+  BACKGROUND_NOT_ALLOWED: 'يمكن أن تكون الخلفية مكانًا أو أجواءً أو إضاءة. يُرجى وصف المشهد خلفك فقط.',
   REQUEST_NOT_ALLOWED: 'يمكن للمعاينة تغيير القماش والألوان والخلفية والإضاءة فقط. يبقى التصميم كما صنعه مصمّمنا. يُرجى إعادة صياغة طلبك.',
   REQUEST_UNAVAILABLE: 'الطلبات بكلماتك غير متاحة الآن. يُرجى استخدام الخيارات بدلًا منها.',
   PREVIEW_NOT_READY: 'انتظري حتى تكتمل معاينتك، ثم جرّبيها.',

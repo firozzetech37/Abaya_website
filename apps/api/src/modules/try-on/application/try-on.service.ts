@@ -27,6 +27,9 @@ import {
   INACCURATE_MESSAGE,
   INACCURATE_TRYON_MESSAGE,
   PHOTO_QUESTION,
+  BACKGROUND_NOT_ALLOWED,
+  BACKGROUND_SCENES,
+  backgroundQuestion,
   planCredits,
   TRYON_SOURCE_SIDE,
   photoTip,
@@ -205,7 +208,17 @@ export class TryOnService {
       otherColour = Boolean(colourId) && !subject.options.some((o) => o.id === colourId && o.isDefault);
     }
 
-    const plan = tryOnPlan(subject.style, { mode: body.mode, body: body.body ?? null });
+    // A new background: a ready-made scene, or her own words (only a place, light or mood; checked first).
+    let background: string | null = body.backgroundPreset ? BACKGROUND_SCENES[body.backgroundPreset] : null;
+    const typedBackground = (body.backgroundText ?? '').trim().replace(/\s+/g, ' ');
+    if (typedBackground) {
+      if (!this.checker.available) throw new BusinessRuleError('REQUEST_UNAVAILABLE', REQUEST_UNAVAILABLE);
+      const verdict = await this.checker.classifyRequest(backgroundQuestion(typedBackground));
+      if (!verdict) throw new BusinessRuleError('REQUEST_UNAVAILABLE', REQUEST_UNAVAILABLE);
+      if (!verdict.kept) throw new BusinessRuleError('BACKGROUND_NOT_ALLOWED', BACKGROUND_NOT_ALLOWED, { leftOut: verdict.leftOut });
+      background = verdict.kept;
+    }
+    const plan = tryOnPlan(subject.style, { mode: body.mode, body: body.body ?? null, background, figure: body.figure ?? null });
     const credits = planCredits(plan.endpoints);
     await this.assertAllowance(actor, 'TRYON', credits, now);
     // A design photo goes to FASHN as a small copy (made once); her photo is checked meanwhile.
@@ -224,6 +237,7 @@ export class TryOnService {
       choices: [
         body.mode === 'MODEL' ? 'Try-on: a model like me' : body.body ? 'Try-on: my photo, made to my measurements' : 'Try-on: my photo',
         ...(otherColour ? [CUSTOM_COLOUR_LINE] : []),
+        ...(body.backgroundPreset ? [`Background: ${body.backgroundPreset}`] : typedBackground ? [`Background: ${typedBackground}`] : []),
       ],
       sourcePath,
       personPath,

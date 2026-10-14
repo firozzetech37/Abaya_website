@@ -1,6 +1,6 @@
 'use client';
 
-import { type CustomerPreviewDto, PREVIEW_REQUEST_MAX, type TryOnBody, type TryOnMode } from '@abaya/contracts';
+import { type CustomerPreviewDto, type MeasurementProfileDto, PREVIEW_REQUEST_MAX, type TryOnBody, type TryOnMode } from '@abaya/contracts';
 import { m } from 'framer-motion';
 import { Camera, Check, ImagePlus, Loader2, Ruler, ShieldCheck, Sparkles, Trash2, UserRound, Wand2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -16,6 +16,7 @@ import { OPEN_PICTURE_EVENT, PICTURE_PARAM, watchPicture } from '@/lib/ai-watch'
 import { OPEN_TRYON_EVENT, TRYON_PARAM } from '@/lib/try-on-link';
 import { usePathname, useRouter } from '@/components/i18n/navigation';
 import { HEIC_ACCEPT, jpegFromHeic, looksLikeHeic } from '@/lib/heic';
+import { type BackgroundChoice, BackgroundPicker } from './background-picker';
 import { TryOnChoice, type TryOnVersion } from './try-on-choice';
 import { guideSeen, TryOnGuide } from './try-on-guide';
 import { TRYON_ACCEPT, useAiLimits, useAiPicture, useCreatePreview, useCreateTryOn, useDeleteTryOn, useRecentAiPictures } from '@/lib/queries/try-on';
@@ -330,6 +331,14 @@ export function AiStudio({
   );
 }
 
+/** Her saved measurements as a figure for the try-on (only values the AI accepts). */
+function figureFrom(p: MeasurementProfileDto): TryOnBody | null {
+  const within = (v: number, min: number, max: number) => (v >= min && v <= max ? Math.round(v) : undefined);
+  const heightCm = within(p.heightCm, 120, 210);
+  if (!heightCm) return null;
+  return { heightCm, bustCm: within(p.bustCm, 60, 170), waistCm: within(p.waistCm, 50, 160), hipCm: within(p.hipCm, 60, 180) };
+}
+
 /** Marks a picture opened from "Your recent pictures" (shown as it was made). */
 const FROM_RECENT = '#recent';
 
@@ -604,11 +613,14 @@ function TryOnWaiting({
   photoUrl,
   onKeepBrowsing,
   customFirst = false,
+  newBackground = false,
 }: {
   startedAt: number;
   phase: 'customising' | 'upload' | 'queued' | 'running';
   /** Her customised abaya is made first: a longer wait, with its own first stage. */
   customFirst?: boolean;
+  /** A new background is put in at the end: a longer wait, with its own last stage. */
+  newBackground?: boolean;
   mode: TryOnMode;
   fit: boolean;
   photoUrl: string | null;
@@ -617,7 +629,7 @@ function TryOnWaiting({
   const { tryOn: t } = useStrings();
   const now = useNow(500);
   const elapsed = Math.max(0, now - startedAt);
-  const long = mode === 'MODEL' || fit || customFirst;
+  const long = mode === 'MODEL' || fit || customFirst || newBackground;
   const expected = long ? EXPECTED_MS.long : EXPECTED_MS.short;
   const pct =
     phase === 'customising'
@@ -637,6 +649,8 @@ function TryOnWaiting({
           ? t.waitStageSlow
           : elapsed > expected
             ? t.waitStageAlmost
+            : newBackground && elapsed > expected * 0.6
+              ? t.waitStageBackground
             : mode === 'MODEL'
               ? half
                 ? t.waitStageModel
@@ -773,6 +787,11 @@ function TryOnDialog({
   const [file, setFile] = useState<File | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [startedAt, setStartedAt] = useState(0);
+  // Her saved measurements (if any) tell the AI her figure, so the abaya is fitted to her (no extra step).
+  const savedProfiles = useMeasurements();
+  // The background behind her: her own (null), a ready-made scene, or her own words.
+  const [background, setBackground] = useState<BackgroundChoice>(null);
+  const canDescribeBackground = Boolean(useAiLimits().data?.wording);
   // "My customised version" without a preview: the preview is made first (this id), then the try-on.
   const makePreview = useCreatePreview();
   const [chainId, setChainId] = useState<string | null>(null);
@@ -807,10 +826,20 @@ function TryOnDialog({
     }
     const measured = needsBody ? toBody(body) : null;
     if (needsBody && !measured) return setMessage(t.heightRequired);
+    if (background && 'text' in background && background.text.trim().length < 3) return setMessage(t.background.customLabel);
     if (!consent) return setMessage(t.consentRequired);
     setMessage(null);
     setStartedAt(Date.now());
+    const backgroundField = !background
+      ? {}
+      : 'preset' in background
+        ? { backgroundPreset: background.preset }
+        : { backgroundText: background.text.trim() };
+    const saved = savedProfiles.data?.find((p) => p.isDefault) ?? savedProfiles.data?.[0];
+    const figure = mode === 'PHOTO' && !measured && saved ? figureFrom(saved) : null;
     const request = {
+      ...backgroundField,
+      ...(figure ? { figure } : {}),
       file: mode === 'PHOTO' ? file : null,
       designId: design.id,
       mode,
@@ -920,6 +949,7 @@ function TryOnDialog({
               startedAt={startedAt}
               phase={customising ? 'customising' : create.isPending ? 'upload' : status === 'QUEUED' ? 'queued' : 'running'}
               customFirst={version === 'CUSTOM' && !readyPreviewId && !colourPhotoId}
+              newBackground={background !== null}
               mode={mode}
               fit={mode === 'PHOTO' && fit}
               photoUrl={mode === 'PHOTO' ? photoUrl : null}
@@ -1038,6 +1068,16 @@ function TryOnDialog({
             </>)}
 
             {needsBody && <BodyFields mode={mode} value={body} onChange={setBody} problems={showProblems ? problems : null} />}
+
+            <BackgroundPicker
+              value={background}
+              onChange={(v) => {
+                setBackground(v);
+                setMessage(null);
+              }}
+              modelMode={mode === 'MODEL'}
+              canDescribe={canDescribeBackground}
+            />
 
 
             <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-sand-200 bg-sand-50 p-3 text-sm">

@@ -4,7 +4,7 @@
  * read the current language with useStrings().
  * Functions are used where a string needs a value inserted.
  */
-import { type AbayaStyle, type OrderStatus, PRODUCTION_STAGE_LABELS, type ProductionStage } from '@abaya/contracts';
+import { type AbayaStyle, type OrderStatus, PRODUCTION_STAGE_LABELS, type ProductionStage, type TryOnBackground } from '@abaya/contracts';
 
 export type SortId = 'newest' | 'price_asc' | 'price_desc';
 export type PriceRangeId = 'under-3000' | '3000-5000' | 'over-5000';
@@ -606,6 +606,27 @@ export const tryOn = {
   moreMeasurements: 'Add bust, waist and hips (better build)',
   fitToggle: 'Show it made to my measurements',
   fitToggleHint: 'The length and sleeves as our tailor will cut them for you. Takes one more AI step.',
+  // The background behind her in the try-on
+  background: {
+    title: 'Background',
+    hint: 'Keep your own, or choose where you would like to be.',
+    keepPhoto: 'My background',
+    keepModel: 'Plain studio',
+    custom: 'Describe your own',
+    customLabel: 'Describe your background',
+    customPlaceholder: 'e.g. a beach at sunset, a Dubai rooftop at night',
+    customHint: 'Only the place, light or mood. The abaya and you stay exactly as you are.',
+    extra: 'A new background takes about 30 seconds more.',
+    presets: {
+      studio: 'Luxury studio',
+      courtyard: 'Arabian courtyard',
+      desert: 'Desert dunes',
+      marble: 'Marble hall',
+      garden: 'Rose garden',
+      skyline: 'City skyline',
+    } as Record<TryOnBackground, string>,
+  },
+  waitStageBackground: 'Setting your new background',
   bodyPrivacy: 'Used only to make this picture. Never saved to your profile, and deleted with the picture after an hour.',
   heightRequired: 'Please enter your height in cm (120 to 210).',
   rangeHint: (min: number, max: number, unit: string) => `${min}–${max} ${unit}`,

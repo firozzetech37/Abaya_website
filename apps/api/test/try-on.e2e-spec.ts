@@ -471,4 +471,53 @@ describe('Website AI preview and try-on (e2e)', () => {
     expect(tryOns.find((i: { id: string }) => i.id === original.body.id).customised).toBe(false);
     expect(tryOns.find((i: { id: string }) => i.id === fromPreview.body.id).customised).toBe(true);
   });
+  it('puts her in a chosen background: a ready-made scene, or her own words checked first', async () => {
+    const iris = await userWithRoles(ctx, ['CUSTOMER'], 'tryon-iris');
+    const ip = { 'X-Forwarded-For': '10.77.0.8' };
+    const photoOf = async () => {
+      const up = await ctx.http.post('/v1/me/try-on/uploads').set(iris.auth).set(ip).send({ contentType: 'image/jpeg' }).expect(201);
+      await ctx.storage.put('private', up.body.storagePath, await herPhoto(), 'image/jpeg');
+      return up.body.storagePath as string;
+    };
+    // A ready-made scene: the try-on, then one background-only edit (2 + 1 credits)
+    const made = await ctx.http
+      .post('/v1/me/try-on/try-ons')
+      .set(iris.auth)
+      .set(ip)
+      .send({ designId, personPath: await photoOf(), backgroundPreset: 'desert', consent: true })
+      .expect(201);
+    const row = await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: made.body.id } });
+    expect(row.stepEndpoints).toEqual(['tryon-max', 'edit']);
+    expect(row.credits).toBe(3);
+    expect(row.steps[1]).toContain('Replace only the background with golden desert dunes');
+    expect(row.steps[1]).toContain('Keep the abaya exactly as it is');
+    expect(row.choices).toContain('Background: desert');
+    await ctx.runTryOn();
+    await ctx.runTryOn();
+    expect(ctx.fashn.runs.at(-1)!.endpoint).toBe('edit');
+    expect((await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: made.body.id } })).status).toBe('DONE');
+
+    // Her own words: the place is kept (in English for the editor), anything about her is left out
+    const own = await ctx.http
+      .post('/v1/me/try-on/try-ons')
+      .set(iris.auth)
+      .set(ip)
+      .send({ designId, personPath: await photoOf(), backgroundText: 'a beach at sunset', consent: true })
+      .expect(201);
+    expect((await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: own.body.id } })).steps.at(-1)).toContain('Replace only the background with a beach at sunset');
+    const refused = await ctx.http
+      .post('/v1/me/try-on/try-ons')
+      .set(iris.auth)
+      .set(ip)
+      .send({ designId, personPath: await photoOf(), backgroundText: 'make my body slimmer', consent: true })
+      .expect(422);
+    expect(refused.body.error.code).toBe('BACKGROUND_NOT_ALLOWED');
+    // One background only
+    await ctx.http
+      .post('/v1/me/try-on/try-ons')
+      .set(iris.auth)
+      .set(ip)
+      .send({ designId, personPath: await photoOf(), backgroundPreset: 'studio', backgroundText: 'a beach', consent: true })
+      .expect(400);
+  });
 });

@@ -65,6 +65,12 @@ export const tryOnBodyInput = z.object({
 });
 export type TryOnBody = z.infer<typeof tryOnBodyInput>;
 
+/** Ready-made backgrounds for a try-on (her own photo's background is kept when none is chosen). */
+export const TRYON_BACKGROUNDS = ['studio', 'courtyard', 'desert', 'marble', 'garden', 'skyline'] as const;
+export type TryOnBackground = (typeof TRYON_BACKGROUNDS)[number];
+/** The longest background she may describe in her own words. */
+export const TRYON_BACKGROUND_TEXT_MAX = 120;
+
 export const createTryOnBody = z
   .object({
     designId: uuid,
@@ -77,10 +83,20 @@ export const createTryOnBody = z
     previewId: uuid.optional(),
     /** Otherwise the design photo of this colour (or the main photo). */
     colourValueId: uuid.optional(),
+    /**
+     * PHOTO, from her saved measurements: her figure, described in the instruction so the abaya is
+     * fitted to her (no extra AI step, unlike `body`, which adds the made-to-measure edit).
+     */
+    figure: tryOnBodyInput.optional(),
+    /** A ready-made background instead of her photo's own. */
+    backgroundPreset: z.enum(TRYON_BACKGROUNDS).optional(),
+    /** Or a background in her own words (checked first: only a place, light or mood). */
+    backgroundText: z.string().trim().min(3).max(TRYON_BACKGROUND_TEXT_MAX).optional(),
     /** She agrees her photo or measurements are sent to our AI provider to make this picture. */
     consent: z.literal(true),
   })
   .superRefine((b, ctx) => {
+    if (b.backgroundPreset && b.backgroundText) ctx.addIssue({ code: 'custom', path: ['backgroundText'], message: 'Choose one background' });
     if (b.mode === 'PHOTO' && !b.personPath) ctx.addIssue({ code: 'custom', path: ['personPath'], message: 'Choose a photo of yourself' });
     if (b.mode === 'MODEL' && !b.body) ctx.addIssue({ code: 'custom', path: ['body'], message: 'Enter at least your height' });
   });
