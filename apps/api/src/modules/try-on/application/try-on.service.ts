@@ -60,6 +60,8 @@ const mimeOf = (path: string) => (path.endsWith('.png') ? 'image/png' : path.end
 const RESULT_URL_TTL_SECONDS = 60 * 60;
 
 /** At most this many recent pictures are listed under the AI studio. */
+/** A try-on in another colour than photographed (her customised version, from that colour's photo). */
+const CUSTOM_COLOUR_LINE = 'Customised colour';
 const RECENT_LIMIT = 12;
 /** At most this many on her profile (a day's allowance is far fewer, and each lasts an hour). */
 const MINE_LIMIT = 60;
@@ -180,6 +182,8 @@ export class TryOnService {
 
     let sourcePath: string;
     let basePreviewId: string | null = null;
+    // Another colour than the one photographed: her customised version (from that colour's photo).
+    let otherColour = false;
     if (body.previewId) {
       const preview = await this.repo.findById(body.previewId);
       if (!preview || preview.kind !== 'PREVIEW' || preview.designId !== subject.id || preview.hidden || preview.purgedAt) {
@@ -198,6 +202,7 @@ export class TryOnService {
       const source = sourceImage(subject.images, subject.options, colourId);
       if (!source) throw new NotFoundError('Design');
       sourcePath = source.image.storagePath;
+      otherColour = Boolean(colourId) && !subject.options.some((o) => o.id === colourId && o.isDefault);
     }
 
     const plan = tryOnPlan(subject.style, { mode: body.mode, body: body.body ?? null });
@@ -216,7 +221,10 @@ export class TryOnService {
       previewKey: null,
       selectedOptionValueIds: [],
       // What she asked for, for her own reference (never her weight or measurements).
-      choices: [body.mode === 'MODEL' ? 'Try-on: a model like me' : body.body ? 'Try-on: my photo, made to my measurements' : 'Try-on: my photo'],
+      choices: [
+        body.mode === 'MODEL' ? 'Try-on: a model like me' : body.body ? 'Try-on: my photo, made to my measurements' : 'Try-on: my photo',
+        ...(otherColour ? [CUSTOM_COLOUR_LINE] : []),
+      ],
       sourcePath,
       personPath,
       basePreviewId,
@@ -463,6 +471,7 @@ export class TryOnService {
     return {
       fromWords: choices.some((c) => c.startsWith(WORDS_LINE)),
       leftOut: leftOut ?? choices.filter((c) => c.startsWith(LEFT_OUT_LINE)).map((c) => c.slice(LEFT_OUT_LINE.length)),
+      customised: row.kind === 'TRYON' && (Boolean(row.basePreviewId) || choices.includes(CUSTOM_COLOUR_LINE)),
       id: row.id,
       kind: row.kind,
       designId: row.designId,

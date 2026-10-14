@@ -39,6 +39,9 @@ export const nav = {
   orders: 'طلباتي',
   downloads: 'تنزيلاتي',
   menu: 'القائمة',
+  /** A newer version of the website is live (components/pwa/pwa.tsx). */
+  updateAvailable: 'نسخة جديدة من عباية أتيليه جاهزة',
+  updateRefresh: 'تحديث',
   /** The try-on banner under the navbar. */
   tryOnBanner: 'التجربة الافتراضية',
   tryOnBannerBody: 'شاهدي نفسك بعباءاتنا الجديدة',
@@ -461,6 +464,53 @@ export const tryOn = {
   testMode: 'وضع الاختبار: الصور تجريبية حتى يُضاف مفتاح الذكاء الاصطناعي.',
   making: 'نُجهّز معاينتك ونطابقها مع الصورة الأصلية… نحو 40 ثانية',
   makingTryOn: 'نُلبسك العباءة… نحو 30 ثانية',
+  // Which abaya to try on, when she has customised it
+  choose: {
+    title: 'أيّ عباءة تودّين تجربتها؟',
+    body: 'لقد عدّلتِ هذه العباءة. جرّبي نسختك، أو الأصلية كما في الصور.',
+    original: 'الأصلية',
+    originalHint: 'تمامًا كما في الصور',
+    custom: 'نسختي المعدّلة',
+    customHint: 'بتعديلاتك',
+    customMakeFirst: 'نُنشئ عباءتك المعدّلة أولًا: دقيقة إضافية تقريبًا.',
+    incomplete: 'أكملي اختيار خياراتك لتجربة نسختك المعدّلة.',
+  },
+  versionOriginal: 'الأصلية',
+  versionCustom: 'معدّلة',
+  waitStageCustomise: 'نُنشئ عباءتك المعدّلة',
+  // The try-on guide (first time, before the try-on window)
+  guide: {
+    label: 'كيف تعمل التجربة الافتراضية',
+    eyebrow: 'التجربة الافتراضية',
+    stepOf: (i: number, n: number) => `الخطوة ${i} من ${n}`,
+    skip: 'تخطّي',
+    back: 'السابق',
+    next: 'التالي',
+    gotIt: 'فهمت، لنجرّب',
+    howItWorks: 'كيف تعمل',
+    steps: [
+      {
+        title: 'اختاري طريقة التجربة',
+        body: 'استخدمي صورتك، أو دعي الذكاء الاصطناعي يُنشئ عارضة بطولك وقوامك، بلا حاجة إلى صورة.',
+        points: ['صورتي', 'عارضة تشبهني'],
+      },
+      {
+        title: 'التقطي صورة جيدة',
+        body: 'كلما كانت الصورة أفضل، كانت النتيجة أصدق.',
+        points: ['قفي مستقيمة أمام الكاميرا وجسمك كاملًا في الصورة', 'انزعي الشال أو الدوبتا والسترة', 'ملابس ضيّقة وبسيطة وإضاءة جيدة'],
+      },
+      {
+        title: 'على مقاساتك',
+        body: 'اختياري: فعّليه لتري الطول والأكمام كما سيقصّها خيّاطنا لكِ.',
+        points: ['طولك', 'طول الكم والطول الكامل'],
+      },
+      {
+        title: 'شاهديها عليكِ',
+        body: 'تجهز خلال دقيقة تقريبًا. تابعي التصفح إن شئتِ وسنُعلمك.',
+        points: ['خاصة: لا يراها أحد غيرك', 'تُحذف تلقائيًا بعد ساعة'],
+      },
+    ],
+  },
   // Waiting screen (try-on) and the notice when it is ready
   waitUsually: (long: boolean): string => (long ? 'تجهز عادةً خلال دقيقة إلى دقيقتين' : 'تجهز عادةً خلال دقيقة تقريبًا'),
   waitStageUpload: 'نرفع صورتك ونتحقق منها',

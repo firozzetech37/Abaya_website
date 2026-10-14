@@ -16,6 +16,8 @@ import { OPEN_PICTURE_EVENT, PICTURE_PARAM, watchPicture } from '@/lib/ai-watch'
 import { OPEN_TRYON_EVENT, TRYON_PARAM } from '@/lib/try-on-link';
 import { usePathname, useRouter } from '@/components/i18n/navigation';
 import { HEIC_ACCEPT, jpegFromHeic, looksLikeHeic } from '@/lib/heic';
+import { TryOnChoice, type TryOnVersion } from './try-on-choice';
+import { guideSeen, TryOnGuide } from './try-on-guide';
 import { TRYON_ACCEPT, useAiLimits, useAiPicture, useCreatePreview, useCreateTryOn, useDeleteTryOn, useRecentAiPictures } from '@/lib/queries/try-on';
 import { useMeasurements } from '@/lib/queries/me';
 import { cn, loginHref } from '@/lib/utils';
@@ -32,6 +34,7 @@ export function AiStudio({
   colourId,
   onLogin,
   canPreview = true,
+  tryOnChoice,
 }: {
   design: { id: string; name: string; slug: string };
   selectedIds: string[];
@@ -41,6 +44,8 @@ export function AiStudio({
   onLogin: () => void;
   /** False in "Order as shown": the photos already show it, so only the try-on is offered. */
   canPreview?: boolean;
+  /** Has she changed the abaya (then "Try it on" asks: original or customised), her changes, and the original photo. */
+  tryOnChoice?: { customised: boolean; changes: string[]; originalImageUrl: string | null; colourPhotoOnly?: boolean };
 }) {
   const { tryOn: t, design: d } = useStrings();
   const authStatus = useAuth().status;
@@ -50,6 +55,9 @@ export function AiStudio({
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [previewOf, setPreviewOf] = useState<string>('');
   const [tryOnOpen, setTryOnOpen] = useState(false);
+  // Which abaya the try-on puts on her, and the popup that asks when she has customised it.
+  const [tryOnVersion, setTryOnVersion] = useState<TryOnVersion>('ORIGINAL');
+  const [chooserOpen, setChooserOpen] = useState(false);
   const [request, setRequest] = useState('');
   const words = request.trim().replace(/\s+/g, ' ');
   const picture = useAiPicture(previewId);
@@ -79,22 +87,46 @@ export function AiStudio({
   };
 
   const done = picture.data?.status === 'DONE' && picture.data.imageUrl ? picture.data : null;
+  // Her preview of exactly the options chosen now (not one from "recent pictures"): the customised abaya to try on.
+  const readyPreview = done && done.kind === 'PREVIEW' && previewOf === key ? done : null;
+  const customised = canPreview && Boolean(tryOnChoice?.customised);
+  /** Open the try-on: when she has customised the abaya, first ask which one. */
+  const openVersioned = () => {
+    if (customised) setChooserOpen(true);
+    else {
+      setTryOnVersion('ORIGINAL');
+      setTryOnOpen(true);
+    }
+  };
+  const openVersionedRef = useRef(openVersioned);
+  useEffect(() => {
+    openVersionedRef.current = openVersioned;
+  });
 
   const section = useRef<HTMLElement>(null);
+  // The first-time guide, shown before her first try-on (then what she asked for continues).
+  const [guideOpen, setGuideOpen] = useState(false);
+  const afterGuide = useRef<(() => void) | null>(null);
+  const showGuideThen = (next: (() => void) | null) => {
+    afterGuide.current = next;
+    setGuideOpen(true);
+  };
   // "Try it on" from elsewhere (home page, cards, the announcement: ?tryon=1) or from the button
   // under the price: open the try-on window here. Signed out: log in first, then come back to it.
   const pathname = usePathname();
   const router = useRouter();
   useEffect(() => {
     if (authStatus === 'loading') return;
-    const openTryOn = () => {
+    const reallyOpen = () => {
       if (authStatus !== 'authenticated') {
         router.push(loginHref(`${pathname}?${TRYON_PARAM}=1`));
         return;
       }
-      setTryOnOpen(true);
+      openVersionedRef.current();
       requestAnimationFrame(() => section.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     };
+    // First time on this device: the guide first, then the try-on (or log in, then the try-on).
+    const openTryOn = () => (guideSeen() ? reallyOpen() : showGuideThen(reallyOpen));
     const url = new URL(window.location.href);
     if (url.searchParams.get(TRYON_PARAM)) {
       url.searchParams.delete(TRYON_PARAM);
@@ -178,7 +210,15 @@ export function AiStudio({
             {previewId && stale ? t.previewAgain : t.preview}
           </Button>
         )}
-        <Button variant="secondary" onClick={() => (loggedIn ? setTryOnOpen(true) : onLogin())} disabled={off}>
+        <Button
+          variant="secondary"
+          onClick={() => {
+            const go = () => (loggedIn ? openVersioned() : onLogin());
+            if (guideSeen()) go();
+            else showGuideThen(go);
+          }}
+          disabled={off}
+        >
           <Camera aria-hidden />
           {t.tryOn}
         </Button>
@@ -232,7 +272,7 @@ export function AiStudio({
                 />
                 <span className="absolute start-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-neutral-950/70 px-3 py-1 text-[11px] font-medium text-white backdrop-blur">
                   {done.kind === 'TRYON' ? <Camera className="size-3" aria-hidden /> : <Sparkles className="size-3" aria-hidden />}
-                  {done.kind === 'TRYON' ? t.tryOnBadge : t.badge}
+                  {done.kind === 'TRYON' ? `${t.tryOnBadge} · ${done.customised ? t.versionCustom : t.versionOriginal}` : t.badge}
                 </span>
               </div>
               <figcaption className="space-y-1 p-3 text-xs leading-relaxed text-neutral-600">
@@ -256,11 +296,36 @@ export function AiStudio({
       {tryOnOpen && (
         <TryOnDialog
           design={design}
-          colourId={colourId}
-          previewId={done && !stale && done.kind === 'PREVIEW' ? done.id : null}
+          version={tryOnVersion}
+          readyPreviewId={readyPreview?.id ?? null}
+          colourPhotoId={tryOnChoice?.colourPhotoOnly ? colourId : null}
+          selectedIds={selectedIds}
           onClose={() => setTryOnOpen(false)}
+          onHowItWorks={() => showGuideThen(null)}
         />
       )}
+      <TryOnChoice
+        open={chooserOpen}
+        originalImageUrl={tryOnChoice?.originalImageUrl ?? null}
+        customImageUrl={readyPreview?.imageUrl ?? null}
+        changes={tryOnChoice?.changes ?? []}
+        complete={complete}
+        onClose={() => setChooserOpen(false)}
+        onPick={(v) => {
+          setChooserOpen(false);
+          setTryOnVersion(v);
+          setTryOnOpen(true);
+        }}
+      />
+      <TryOnGuide
+        open={guideOpen}
+        onDone={() => {
+          setGuideOpen(false);
+          const next = afterGuide.current;
+          afterGuide.current = null;
+          next?.();
+        }}
+      />
     </section>
   );
 }
@@ -538,9 +603,12 @@ function TryOnWaiting({
   fit,
   photoUrl,
   onKeepBrowsing,
+  customFirst = false,
 }: {
   startedAt: number;
-  phase: 'upload' | 'queued' | 'running';
+  phase: 'customising' | 'upload' | 'queued' | 'running';
+  /** Her customised abaya is made first: a longer wait, with its own first stage. */
+  customFirst?: boolean;
   mode: TryOnMode;
   fit: boolean;
   photoUrl: string | null;
@@ -549,15 +617,19 @@ function TryOnWaiting({
   const { tryOn: t } = useStrings();
   const now = useNow(500);
   const elapsed = Math.max(0, now - startedAt);
-  const long = mode === 'MODEL' || fit;
+  const long = mode === 'MODEL' || fit || customFirst;
   const expected = long ? EXPECTED_MS.long : EXPECTED_MS.short;
   const pct =
-    phase === 'upload'
+    phase === 'customising'
+      ? Math.min(45, 2 + 43 * (1 - Math.exp(-elapsed / 40_000)))
+      : phase === 'upload'
       ? Math.min(8, (elapsed / 1000) * 2)
       : Math.min(95, 8 + 87 * (1 - Math.exp(-elapsed / (expected * 0.55))));
   const half = elapsed < expected / 2;
   const stage =
-    phase === 'upload'
+    phase === 'customising'
+      ? t.waitStageCustomise
+      : phase === 'upload'
       ? t.waitStageUpload
       : phase === 'queued'
         ? t.waitStageQueue
@@ -673,14 +745,25 @@ function DevelopingImage({ src, alt, className }: { src: string; alt: string; cl
 
 function TryOnDialog({
   design,
-  colourId,
-  previewId,
+  version,
+  readyPreviewId,
+  colourPhotoId,
+  selectedIds,
   onClose,
+  onHowItWorks,
 }: {
   design: { id: string; name: string; slug: string };
-  colourId: string | null;
-  previewId: string | null;
+  /** Which abaya she chose to try on. */
+  version: TryOnVersion;
+  /** Her finished preview of the options chosen now (the customised abaya), if she made one. */
+  readyPreviewId: string | null;
+  /** Only the colour changed and it was photographed: try on that photo (no preview needed). */
+  colourPhotoId: string | null;
+  /** Her chosen options, to make the customised abaya first when there is no preview yet. */
+  selectedIds: string[];
   onClose: () => void;
+  /** Shows the first-time guide again. */
+  onHowItWorks: () => void;
 }) {
   const { tryOn: t } = useStrings();
   const input = useRef<HTMLInputElement>(null);
@@ -690,7 +773,11 @@ function TryOnDialog({
   const [file, setFile] = useState<File | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [startedAt, setStartedAt] = useState(0);
-  const [wearPreview, setWearPreview] = useState(Boolean(previewId));
+  // "My customised version" without a preview: the preview is made first (this id), then the try-on.
+  const makePreview = useCreatePreview();
+  const [chainId, setChainId] = useState<string | null>(null);
+  const chain = useAiPicture(chainId);
+  const pending = useRef<Parameters<typeof create.mutate>[0] | null>(null);
   const [consent, setConsent] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [resultId, setResultId] = useState<string | null>(null);
@@ -708,6 +795,8 @@ function TryOnDialog({
   const needsBody = mode === 'MODEL' || fit;
   const [showProblems, setShowProblems] = useState(false);
   const problems = needsBody ? bodyProblems(body) : new Set<keyof BodyDraft>();
+  const tryOn = (body: Parameters<typeof create.mutate>[0]) =>
+    create.mutate(body, { onSuccess: (dto) => setResultId(dto.id), onError: (e) => setMessage(errorMessage(e)) });
   const start = () => {
     if (mode === 'PHOTO' && preparing) return setMessage(t.preparingPhoto);
     if (mode === 'PHOTO' && !file) return setMessage(t.photoRequired);
@@ -721,18 +810,38 @@ function TryOnDialog({
     if (!consent) return setMessage(t.consentRequired);
     setMessage(null);
     setStartedAt(Date.now());
-    create.mutate(
-      {
-        file: mode === 'PHOTO' ? file : null,
-        designId: design.id,
-        mode,
-        ...(measured ? { body: measured } : {}),
-        consent: true,
-        ...(wearPreview && previewId ? { previewId } : colourId ? { colourValueId: colourId } : {}),
-      },
-      { onSuccess: (dto) => setResultId(dto.id), onError: (e) => setMessage(errorMessage(e)) },
+    const request = {
+      file: mode === 'PHOTO' ? file : null,
+      designId: design.id,
+      mode,
+      ...(measured ? { body: measured } : {}),
+      consent: true as const,
+    };
+    // The original: the abaya as photographed. Her version: on her preview (made first if needed).
+    if (version === 'ORIGINAL') return tryOn(request);
+    if (readyPreviewId) return tryOn({ ...request, previewId: readyPreviewId });
+    if (colourPhotoId) return tryOn({ ...request, colourValueId: colourPhotoId });
+    pending.current = request;
+    makePreview.mutate(
+      { designId: design.id, selectedOptionValueIds: selectedIds },
+      { onSuccess: (dto) => setChainId(dto.id), onError: (e) => setMessage(errorMessage(e)) },
     );
   };
+
+  // The customised abaya is ready: put it on her. It failed: say so (nothing else is spent).
+  const chainStatus = chain.data?.status;
+  useEffect(() => {
+    if (!chainId || !pending.current) return;
+    if (chainStatus === 'DONE') {
+      const body = { ...pending.current, previewId: chainId };
+      pending.current = null;
+      create.mutate(body, { onSuccess: (dto) => setResultId(dto.id), onError: (e) => setMessage(errorMessage(e)) });
+    } else if (chainStatus === 'FAILED') {
+      pending.current = null;
+    }
+  }, [chainId, chainStatus, create]);
+  // Her customised abaya could not be made: shown with the form, so she can try again.
+  const chainError = chainStatus === 'FAILED' ? (chain.data?.error ? serverText(chain.data.error) : t.retry) : null;
 
   const reset = () => {
     setResultId(null);
@@ -740,7 +849,9 @@ function TryOnDialog({
   };
 
   const status = result.data?.status;
-  const working = create.isPending || status === 'QUEUED' || status === 'RUNNING';
+  // Making her customised abaya first (before the try-on starts).
+  const customising = !resultId && (makePreview.isPending || (Boolean(chainId) && chainStatus !== 'FAILED'));
+  const working = customising || create.isPending || status === 'QUEUED' || status === 'RUNNING';
 
   // Closing while it is being made keeps watching it: a notice says when it is ready, on any page.
   const leave = () => {
@@ -752,12 +863,26 @@ function TryOnDialog({
     <Dialog open onOpenChange={(o) => !o && !create.isPending && leave()}>
       <DialogContent className="max-h-[92vh] max-w-lg overflow-y-auto">
         <DialogTitle className="font-display text-2xl font-semibold">{t.dialogTitle}</DialogTitle>
+        <button
+          type="button"
+          onClick={onHowItWorks}
+          className="-mt-1 inline-flex w-fit items-center gap-1.5 text-xs font-medium text-accent-800 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+        >
+          <Sparkles className="size-3.5 text-gold-500" aria-hidden />
+          {t.guide.howItWorks}
+        </button>
         <DialogDescription className="text-sm text-neutral-700">{t.dialogBody}</DialogDescription>
 
         {resultId && status === 'DONE' && result.data?.imageUrl ? (
           <div className="mt-4 space-y-3 motion-safe:animate-fade-in">
             <figure className="overflow-hidden rounded-xl border border-border">
-              <DevelopingImage key={result.data.id} src={result.data.imageUrl} alt={t.resultAlt(design.name)} className="aspect-[3/4]" />
+              <div className="relative">
+                <DevelopingImage key={result.data.id} src={result.data.imageUrl} alt={t.resultAlt(design.name)} className="aspect-[3/4]" />
+                <span className="absolute start-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-neutral-950/70 px-3 py-1 text-[11px] font-medium text-white backdrop-blur">
+                  {result.data.customised ? <Sparkles className="size-3 text-gold-200" aria-hidden /> : <Camera className="size-3" aria-hidden />}
+                  {result.data.customised ? t.versionCustom : t.versionOriginal}
+                </span>
+              </div>
               <figcaption className="space-y-1.5 p-3 text-xs text-neutral-600">
                 <span className="flex items-center gap-2">
                   <ShieldCheck className="size-4 shrink-0 text-accent-700" aria-hidden />
@@ -793,7 +918,8 @@ function TryOnDialog({
           <div className="mt-4">
             <TryOnWaiting
               startedAt={startedAt}
-              phase={create.isPending ? 'upload' : status === 'QUEUED' ? 'queued' : 'running'}
+              phase={customising ? 'customising' : create.isPending ? 'upload' : status === 'QUEUED' ? 'queued' : 'running'}
+              customFirst={version === 'CUSTOM' && !readyPreviewId && !colourPhotoId}
               mode={mode}
               fit={mode === 'PHOTO' && fit}
               photoUrl={mode === 'PHOTO' ? photoUrl : null}
@@ -913,15 +1039,6 @@ function TryOnDialog({
 
             {needsBody && <BodyFields mode={mode} value={body} onChange={setBody} problems={showProblems ? problems : null} />}
 
-            {previewId && (
-              <label className="flex cursor-pointer items-start gap-2.5 text-sm">
-                <Checkbox checked={wearPreview} onCheckedChange={(v) => setWearPreview(v === true)} />
-                <span>
-                  <span className="block font-medium">{t.wearPreview}</span>
-                  <span className="block text-xs text-muted">{t.wearPreviewHint}</span>
-                </span>
-              </label>
-            )}
 
             <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-sand-200 bg-sand-50 p-3 text-sm">
               <Checkbox
@@ -934,7 +1051,7 @@ function TryOnDialog({
               <span className="leading-relaxed text-neutral-700">{mode === 'MODEL' ? t.consentModel : t.consent}</span>
             </label>
 
-            {message ? <Alert tone="danger">{message}</Alert> : null}
+            {message || chainError ? <Alert tone="danger">{message ?? chainError}</Alert> : null}
 
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button variant="ghost" onClick={onClose}>

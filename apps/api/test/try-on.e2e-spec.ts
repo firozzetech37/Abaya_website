@@ -435,4 +435,40 @@ describe('Website AI preview and try-on (e2e)', () => {
     await ctx.db.customerPreviewAccess.updateMany({ where: { userId: gia.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
     expect((await ctx.http.get('/v1/me/try-on/mine').set(gia.auth).expect(200)).body.items).toEqual([]);
   });
+  it('says whether a try-on shows the original or her customised version', async () => {
+    const hana = await userWithRoles(ctx, ['CUSTOMER'], 'tryon-hana');
+    const photoOf = async () => {
+      const up = await ctx.http.post('/v1/me/try-on/uploads').set(hana.auth).set('X-Forwarded-For', '10.77.0.7').send({ contentType: 'image/jpeg' }).expect(201);
+      await ctx.storage.put('private', up.body.storagePath, await herPhoto(), 'image/jpeg');
+      return up.body.storagePath as string;
+    };
+    // The original, as photographed
+    const original = await ctx.http.post('/v1/me/try-on/try-ons').set(hana.auth).set('X-Forwarded-For', '10.77.0.7').send({ designId, personPath: await photoOf(), consent: true }).expect(201);
+    expect(original.body.customised).toBe(false);
+    // Her customised version, on her preview
+    const own = await preview(hana, custom).expect(201);
+    await ctx.runTryOn();
+    const fromPreview = await ctx.http
+      .post('/v1/me/try-on/try-ons')
+      .set(hana.auth).set('X-Forwarded-For', '10.77.0.7')
+      .send({ designId, personPath: await photoOf(), previewId: own.body.id, consent: true })
+      .expect(201);
+    expect(fromPreview.body.customised).toBe(true);
+    // Another colour than photographed (from that colour's own photo) also counts as customised
+    const colours = await ctx.db.optionValue.findMany({ where: { group: { code: 'COLOUR' }, designOptions: { some: { designId } } }, include: { designOptions: { where: { designId } } } });
+    const other = colours.find((c) => !c.designOptions[0]?.isDefault);
+    if (other) {
+      const recoloured = await ctx.http
+        .post('/v1/me/try-on/try-ons')
+        .set(hana.auth).set('X-Forwarded-For', '10.77.0.7')
+        .send({ designId, personPath: await photoOf(), colourValueId: other.id, consent: true });
+      expect([recoloured.status, recoloured.body.error?.code]).toEqual([201, undefined]);
+      expect(recoloured.body.customised).toBe(true);
+    }
+    // And on her profile list
+    const mine = await ctx.http.get('/v1/me/try-on/mine').set(hana.auth).set('X-Forwarded-For', '10.77.0.7').expect(200);
+    const tryOns = mine.body.items.filter((i: { kind: string }) => i.kind === 'TRYON');
+    expect(tryOns.find((i: { id: string }) => i.id === original.body.id).customised).toBe(false);
+    expect(tryOns.find((i: { id: string }) => i.id === fromPreview.body.id).customised).toBe(true);
+  });
 });

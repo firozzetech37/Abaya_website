@@ -45,7 +45,7 @@ function ProtectedImage({ src, alt, className }: { src: string; alt: string; cla
  * pictures being made show progress and appear when ready; expired ones drop off by themselves.
  */
 export function MyAiPictures() {
-  const { account } = useStrings();
+  const { account, tryOn } = useStrings();
   const t = account.aiPictures;
   const pictures = useMyAiPictures();
   const now = useNow(15_000);
@@ -106,7 +106,7 @@ export function MyAiPictures() {
                 )}
                 <span className="absolute start-2 top-2 inline-flex items-center gap-1 rounded-full bg-neutral-950/70 px-2.5 py-1 text-[10px] font-medium text-white backdrop-blur">
                   {p.kind === 'TRYON' ? <Camera className="size-3" aria-hidden /> : <Sparkles className="size-3" aria-hidden />}
-                  {p.kind === 'TRYON' ? t.tryOn : t.preview}
+                  {p.kind === 'TRYON' ? `${t.tryOn} · ${p.customised ? tryOn.versionCustom : tryOn.versionOriginal}` : t.preview}
                 </span>
               </button>
 

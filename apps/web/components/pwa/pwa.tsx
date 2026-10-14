@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 import { usePathname } from '@/components/i18n/navigation';
+import { useStrings } from '@/components/i18n/locale-provider';
 
 const VERSION = process.env.NEXT_PUBLIC_BUILD_ID ?? 'unknown';
 /** How often an open page asks whether a newer version is live. */
@@ -29,10 +31,16 @@ async function hardReload() {
  * - "hard refresh on deploy": every minute, and whenever the tab comes back into view, it asks
  *   /api/version which commit is live. When a newer one is, the page reloads itself, at a moment
  *   that never interrupts the visitor: right away if the tab is in the background, else on her
- *   next move to another page (a full page load instead of an in-app one).
+ *   next move to another page (a full page load instead of an in-app one). Meanwhile a small
+ *   notice offers "Refresh" for anyone who wants the new version at once.
  */
 export function Pwa() {
   const pathname = usePathname();
+  const { nav } = useStrings();
+  const words = useRef(nav);
+  useEffect(() => {
+    words.current = nav;
+  }, [nav]);
   const stale = useRef(false);
   const firstPath = useRef(pathname);
 
@@ -52,6 +60,12 @@ export function Pwa() {
         if (version && version !== 'unknown' && version !== VERSION) {
           stale.current = true;
           if (document.visibilityState === 'hidden') void hardReload();
+          else
+            toast(words.current.updateAvailable, {
+              id: 'new-version',
+              duration: Infinity,
+              action: { label: words.current.updateRefresh, onClick: () => void hardReload() },
+            });
         }
       } catch {
         // Offline or the server is busy: try again later.

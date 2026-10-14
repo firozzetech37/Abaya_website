@@ -42,6 +42,9 @@ type SizeChoice = { sizeBandId: string } | { measurementProfileId: string };
 const noSubscription = () => () => {};
 
 /** The panels under the order choice: soft cream cards with a gold hairline. */
+/** Two option lists differ (order does not matter). */
+const idsDiffer = (a: string[], b: string[]) => a.length !== b.length || a.some((id) => !b.includes(id));
+
 const PANEL = 'rounded-2xl border border-gold-200/70 bg-gradient-to-b from-surface to-[#FFFBF3] p-5 shadow-[0_24px_48px_-40px_rgba(35,28,23,0.5)] sm:p-7';
 
 /**
@@ -83,6 +86,7 @@ function Panel({ design, draft }: { design: DesignDetail; draft: RedesignDraft |
   // "Order as shown" is offered when the photographed defaults make a complete order.
   const defaults = useMemo(() => defaultSelections(design), [design]);
   const canOrderAsShown = missingRequiredGroups(design, defaults).length === 0;
+  const defaultIds = useMemo(() => selectedIds(design, defaults), [design, defaults]);
   const [mode, setMode] = useState<OrderMode>(() => draft?.mode ?? (draft || !canOrderAsShown ? 'custom' : 'shown'));
   const chooseMode = (m: OrderMode) => {
     setMode(m);
@@ -297,6 +301,17 @@ function Panel({ design, draft }: { design: DesignDetail; draft: RedesignDraft |
         colourId={chosenColourId}
         onLogin={toLogin}
         canPreview={mode === 'custom'}
+        tryOnChoice={{
+          // She changed something from the photographed abaya: "Try it on" asks which one.
+          customised: mode === 'custom' && idsDiffer(selectedIds(design, selections), defaultIds),
+          changes: design.optionGroups.flatMap((g) => g.values.filter((v) => !v.isDefault && (selections[g.code] ?? []).includes(v.id)).map((v) => v.name)),
+          originalImageUrl: design.images.find((i) => !i.colourId)?.url ?? design.images[0]?.url ?? null,
+          // Only the colour changed, and the atelier photographed that colour: that photo is tried on.
+          colourPhotoOnly:
+            Boolean(chosenColourId) &&
+            design.images.some((i) => i.colourId === chosenColourId) &&
+            design.optionGroups.every((g) => g.code === 'COLOUR' || !idsDiffer(selections[g.code] ?? [], defaults[g.code] ?? [])),
+        }}
       />
 
       {/* Sizes and measurements are only needed to order ("Ordering coming soon" hides them). */}

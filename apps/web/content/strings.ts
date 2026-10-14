@@ -41,6 +41,9 @@ export const nav = {
   orders: 'My orders',
   downloads: 'My downloads',
   menu: 'Menu',
+  /** A newer version of the website is live (components/pwa/pwa.tsx). */
+  updateAvailable: 'A new version of Abaya Atelier is ready',
+  updateRefresh: 'Refresh',
   /** The try-on banner under the navbar. */
   tryOnBanner: 'Virtual Try On',
   tryOnBannerBody: 'See yourself in our new abayas',
@@ -482,6 +485,53 @@ export const tryOn = {
   testMode: 'Test mode: pictures are placeholders until the AI key is added.',
   making: 'Making your preview and checking it against the original… about 40 seconds',
   makingTryOn: 'Dressing you in the abaya… about 30 seconds',
+  // Which abaya to try on, when she has customised it
+  choose: {
+    title: 'Which abaya would you like to try on?',
+    body: 'You have customised this abaya. Try on your version, or the original as photographed.',
+    original: 'Original',
+    originalHint: 'Exactly as in the photos',
+    custom: 'My customised version',
+    customHint: 'With your changes',
+    customMakeFirst: 'We create your customised abaya first: about a minute more.',
+    incomplete: 'Finish choosing your options to try on your customised version.',
+  },
+  versionOriginal: 'Original',
+  versionCustom: 'Customised',
+  waitStageCustomise: 'Creating your customised abaya',
+  // The try-on guide (first time, before the try-on window)
+  guide: {
+    label: 'How the virtual try-on works',
+    eyebrow: 'Virtual try-on',
+    stepOf: (i: number, n: number) => `Step ${i} of ${n}`,
+    skip: 'Skip',
+    back: 'Back',
+    next: 'Next',
+    gotIt: 'Got it, let’s try',
+    howItWorks: 'How it works',
+    steps: [
+      {
+        title: 'Choose how to try it on',
+        body: 'Use your own photo, or let our AI create a model with your height and build. No photo needed for that.',
+        points: ['My photo', 'A model like me'],
+      },
+      {
+        title: 'Take a good photo',
+        body: 'The better the photo, the truer the picture.',
+        points: ['Stand straight, facing the camera, whole body in the photo', 'Take off shawls, dupattas and jackets', 'Fitted, plain clothes and good light'],
+      },
+      {
+        title: 'Made to your measurements',
+        body: 'Optional: tick it to see the length and sleeves as our tailor would cut them for you.',
+        points: ['Your height', 'Sleeve and full length'],
+      },
+      {
+        title: 'See it on you',
+        body: 'It is ready in about a minute. Keep browsing if you like: we will let you know.',
+        points: ['Private: only you can see it', 'Deleted automatically after one hour'],
+      },
+    ],
+  },
   // Waiting screen (try-on) and the notice when it is ready
   waitUsually: (long: boolean): string => (long ? 'Usually ready in 1–2 minutes' : 'Usually ready in about a minute'),
   waitStageUpload: 'Uploading and checking your photo',

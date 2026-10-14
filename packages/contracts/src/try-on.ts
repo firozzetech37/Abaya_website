@@ -104,6 +104,8 @@ export interface CustomerPreviewDto {
   fromWords: boolean;
   /** Parts of her wish that were left out because they would change the design. */
   leftOut: string[];
+  /** A try-on of her customised version (made on her AI preview), not the abaya as photographed. */
+  customised: boolean;
 }
 
 export interface CustomerAiLimitsDto {
