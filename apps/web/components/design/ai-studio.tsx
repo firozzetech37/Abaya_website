@@ -518,7 +518,7 @@ function BodyFields({
 
 /** Shimmering fabric while the picture is made. */
 /** How long a try-on usually takes at FASHN: one step, or two (a model first, or the fit). */
-const EXPECTED_MS = { short: 45_000, long: 90_000 };
+const EXPECTED_MS = { short: 60_000, long: 100_000 };
 
 const clockText = (ms: number) => {
   const s = Math.floor(ms / 1000);

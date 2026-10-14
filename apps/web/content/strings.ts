@@ -46,8 +46,6 @@ export const nav = {
   tryOnBannerBody: 'See yourself in our new abayas',
   tryOnBannerShort: 'See it on you',
   tryOnBannerClose: 'Hide this banner',
-  /** On a clickable announcement. */
-  announcementGo: 'Discover',
   closeMenu: 'Close menu',
   home: 'Home',
   cta: 'Design yours',
@@ -485,7 +483,7 @@ export const tryOn = {
   making: 'Making your preview and checking it against the original… about 40 seconds',
   makingTryOn: 'Dressing you in the abaya… about 30 seconds',
   // Waiting screen (try-on) and the notice when it is ready
-  waitUsually: (long: boolean): string => (long ? 'Usually ready in 1–2 minutes' : 'Usually ready in 30–60 seconds'),
+  waitUsually: (long: boolean): string => (long ? 'Usually ready in 1–2 minutes' : 'Usually ready in about a minute'),
   waitStageUpload: 'Uploading and checking your photo',
   waitStageQueue: 'Sending it to our AI studio',
   waitStageModel: 'Creating a model with your height and build',
@@ -524,7 +522,7 @@ export const tryOn = {
   // Try-on dialog
   dialogTitle: 'Try it on',
   dialogBody: 'Upload a full-length photo of yourself and see this abaya on you.',
-  tips: ['Stand straight, facing the camera, whole body in the photo', 'Good light, plain background if you can', 'Fitted or light clothes work best'],
+  tips: ['Stand straight, facing the camera, whole body in the photo', 'Take off shawls, dupattas, scarves over your shoulders and jackets', 'Fitted, plain clothes work best; good light, plain background if you can'],
   choosePhoto: 'Choose a photo',
   changePhoto: 'Change photo',
   photoFormats: 'JPEG, PNG, WebP or iPhone HEIC, up to 10 MB',

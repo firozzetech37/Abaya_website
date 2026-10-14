@@ -109,7 +109,8 @@ export const middleware: NextMiddleware = (request, event) =>
 
 export const config = {
   matcher: [
-    // Skip Next internals and static files (sitemap, robots, OG images, icons, fonts).
-    '/((?!_next|favicon.ico|icon|apple-icon|opengraph-image|twitter-image|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff2?|ttf|txt|xml|map|mp4|webm)$).*)',
+    // Skip Next internals, the version check (/api/version) and static files (sitemap, robots, OG
+    // images, icons, fonts, the app manifest, the service worker and its offline page).
+    '/((?!_next|api/|favicon.ico|icon|apple-icon|opengraph-image|twitter-image|robots.txt|sitemap.xml|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff2?|ttf|txt|xml|map|mp4|webm|html|webmanifest)$).*)',
   ],
 };

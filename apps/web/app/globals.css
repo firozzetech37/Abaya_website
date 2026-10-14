@@ -145,68 +145,28 @@
     0 24px 60px -24px rgb(180 135 52 / 0.55);
 }
 
-/* The try-on banner under the navbar (components/layout/try-on-banner.tsx): a soft glow pulse, a
-   gold sheen, a twinkling sparkle and a nudging arrow. */
-.tryon-banner-glow {
-  background: radial-gradient(60% 140% at 50% 50%, rgba(233, 196, 120, 0.45) 0%, rgba(233, 196, 120, 0) 70%);
-  animation: tryon-glow 2.4s ease-in-out infinite;
+/* The try-on banner under the navbar (components/layout/try-on-banner.tsx): big text on the page
+   itself, softly blinking (fading out and back in about once a second). */
+.tryon-banner-blink {
+  animation: tryon-blink 1.2s ease-in-out infinite;
 }
-@keyframes tryon-glow {
+/* Under the pointer (or keyboard focus) it holds still and fully visible, so it reads as a link */
+.tryon-banner a:hover .tryon-banner-blink,
+.tryon-banner a:focus-visible .tryon-banner-blink {
+  animation: none;
+  opacity: 1;
+}
+@keyframes tryon-blink {
   0%,
   100% {
-    opacity: 0.25;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-.tryon-banner-sheen {
-  background: linear-gradient(90deg, transparent, rgba(251, 240, 207, 0.35), transparent);
-  animation: announce-sheen 4s ease-in-out infinite;
-}
-.tryon-banner-spark {
-  animation: tryon-twinkle 1.6s ease-in-out infinite;
-}
-@keyframes tryon-twinkle {
-  0%,
-  100% {
-    transform: scale(1) rotate(0deg);
     opacity: 1;
   }
   50% {
-    transform: scale(1.3) rotate(20deg);
-    opacity: 0.7;
-  }
-}
-.tryon-banner-arrow {
-  animation: tryon-nudge 1.6s ease-in-out infinite;
-}
-@keyframes tryon-nudge {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  50% {
-    transform: translateX(4px);
-  }
-}
-[dir='rtl'] .tryon-banner-arrow {
-  animation-name: tryon-nudge-rtl;
-}
-@keyframes tryon-nudge-rtl {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  50% {
-    transform: translateX(-4px);
+    opacity: 0.2;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .tryon-banner-glow,
-  .tryon-banner-sheen,
-  .tryon-banner-spark,
-  .tryon-banner-arrow {
+  .tryon-banner-blink {
     animation: none;
   }
 }

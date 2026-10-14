@@ -11,6 +11,7 @@ import { Craftsmanship } from '@/components/home/craftsmanship';
 import { HeroHeadline } from '@/components/home/hero-headline';
 import { HeroShowcase } from '@/components/home/hero-showcase';
 import { TryOnFeature } from '@/components/home/try-on-feature';
+import { TryOnBanner } from '@/components/layout/try-on-banner';
 import { heroLooks } from '@/lib/hero';
 import { tryOnHref } from '@/lib/try-on-link';
 import { Journey } from '@/components/home/journey';
@@ -90,7 +91,10 @@ export default async function HomePage({ params }: { params: Promise<{ lang: str
           <div className="absolute bottom-0 left-[12%] h-40 w-[50%] rounded-[100%] bg-gold-200/30 blur-3xl" />
         </div>
 
-        <div className="relative flex min-h-[inherit] flex-col justify-center px-4 pb-6 pt-12 sm:px-8 lg:w-[47%] lg:ps-[5%] lg:pe-6 lg:pb-24 lg:pt-24">
+        {/* The virtual try-on, big and softly blinking, at the top of the hero */}
+        <TryOnBanner className="relative z-10 pt-2 sm:pt-4" />
+
+        <div className="relative flex min-h-[inherit] flex-col justify-center px-4 pb-6 pt-6 sm:px-8 lg:w-[47%] lg:ps-[5%] lg:pe-6 lg:pb-24 lg:pt-10">
           <p className="flex items-center gap-3 text-xs font-medium uppercase tracking-[0.28em] text-rose-600 motion-safe:animate-fade-up" style={enter(0)}>
             <span className="h-px w-8 bg-gradient-to-r from-transparent to-gold-400 rtl:bg-gradient-to-l" aria-hidden />
             <EyebrowStar />

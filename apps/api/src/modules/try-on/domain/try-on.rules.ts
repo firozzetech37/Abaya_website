@@ -54,10 +54,14 @@ export function tryOnPlan(style: string, options: { mode?: TryOnMode; body?: Try
   const body = options.body ?? null;
   const dress = (who: string) =>
     [
-      `Dress ${who} in this ${shape} abaya, full length to her ankles, worn open or closed exactly as shown.`,
-      'Transfer ONLY the abaya: do not copy the product model’s handbag, shoes, jewellery or headscarf.',
+      `Dress ${who} in this ${shape} abaya, full length to her ankles, worn open or closed exactly as in the product photo.`,
+      'Replace her own outfit completely: remove her shawl, dupatta, stole, any scarf draped over her shoulders or chest, her jacket, cardigan or coat, and her top. None of her own clothes may show.',
+      'If the abaya is open at the front, she wears the same plain inner dress underneath as the product model, in the same colour.',
+      'Keep only a hijab that covers her hair, if she wears one; otherwise keep her hair as it is.',
+      'Transfer ONLY the abaya and its inner dress: do not copy the product model’s handbag, shoes, jewellery or headscarf.',
       `Keep the abaya’s ${shape} silhouette and every embroidery panel, border and motif exactly: same position, size, pattern and colours.`,
-      'Keep her face, skin tone, body shape, height, pose, hands, her own headscarf or hair, and the background exactly as in her photo.',
+      'Keep her face exactly as in her photo: the same facial features, expression, skin texture and skin tone. Do not beautify, smooth, retouch, slim or brighten her face.',
+      'Keep her body shape, height, pose, head position, hands and the background exactly as in her photo.',
       'It must look like a real photograph of her: natural drape and folds that follow her body, real fabric texture.',
     ].join(' ');
   const garmentChecks = (result: string, original: string): PreviewCheck[] => [
@@ -82,6 +86,7 @@ export function tryOnPlan(style: string, options: { mode?: TryOnMode; body?: Try
   }
   const checks: PreviewCheck[] = [
     { text: 'The woman in image 3 is clearly the same person as in image 2: same face, skin tone, body shape, pose and background.', critical: true },
+    { text: 'None of her own clothes from image 2 (a shawl, dupatta or scarf over her shoulders, her top or jacket) are visible in image 3: only the abaya, its inner dress and a hijab.', critical: true },
     ...garmentChecks('image 3', 'image 1'),
   ];
   if (!body) return { steps: [dress('the woman in her photo')], endpoints: [ENDPOINT.TRYON], checks };
@@ -224,19 +229,28 @@ export function choiceLines(options: SubjectOption[], selectedIds: string[]): st
  * The `inputs` of POST /v1/run for one step (always 1K fast, one image). `source` is the design
  * photo (or her customised preview), `working` the previous step's picture, `person` her photo.
  */
+/** The try-on's FASHN quality: balanced keeps embroidery and faces closer than fast. */
+export const TRYON_GENERATION_MODE = 'balanced';
+
+/** FASHN credits one step costs: a balanced try-on 2, everything else (1k, fast) 1. */
+export const stepCredits = (endpoint: string): number => (endpoint === ENDPOINT.TRYON ? 2 : 1);
+/** Credits of all the steps of a request. */
+export const planCredits = (endpoints: string[]): number => endpoints.reduce((n, e) => n + stepCredits(e), 0);
+
 export function fashnInputs(
   endpoint: string,
   prompt: string,
   urls: { source: string; working?: string; person?: string },
 ): Record<string, unknown> {
   const common = { resolution: '1k', generation_mode: 'fast', num_images: 1, output_format: 'png' };
+  // Try-ons use "balanced": the embroidery comes out far more faithful (2 credits instead of 1).
   // Try-on pictures come back as JPEG: smaller to download and watermark (the shown picture is a JPEG anyway).
   if (endpoint === ENDPOINT_MODEL) return { prompt, aspect_ratio: '4:5', ...common, output_format: 'jpeg' };
   if (endpoint === ENDPOINT.TRYON) {
     // Her photo, or (a model like me) the model the previous step made.
     const model = urls.person ?? urls.working;
     if (!model) throw new Error('A try-on needs a photo of the person.');
-    return { product_image: urls.source, model_image: model, prompt, ...common, output_format: 'jpeg' };
+    return { product_image: urls.source, model_image: model, prompt, ...common, generation_mode: TRYON_GENERATION_MODE, output_format: 'jpeg' };
   }
   return { image: urls.working ?? urls.source, prompt, ...common };
 }

@@ -18,8 +18,15 @@ try {
   // No root env loader available: fall back to defaults (API on http://localhost:4000).
 }
 
+/**
+ * This build's version: the git commit Vercel deploys (a time stamp elsewhere). Open pages compare
+ * it with /api/version and reload when a newer commit is live (components/pwa/pwa.tsx).
+ */
+const BUILD_ID = process.env.VERCEL_GIT_COMMIT_SHA || process.env.RENDER_GIT_COMMIT || `build-${Date.now()}`;
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  env: { NEXT_PUBLIC_BUILD_ID: BUILD_ID },
   // Monorepo root, so file tracing and the workspace root are detected correctly.
   outputFileTracingRoot: path.resolve(__dirname, '../..'),
   transpilePackages: ['@abaya/contracts', '@abaya/ui'],

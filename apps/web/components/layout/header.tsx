@@ -244,7 +244,6 @@ export function Header() {
  * (Announcements page; English and Arabic, with dates). Hidden while none is live.
  */
 function AnnouncementBar() {
-  const { nav } = useStrings();
   const [index, setIndex] = useState(0);
   const live = useAnnouncements();
   const messages: { text: string; linkPath: string | null }[] = live.data ?? [];
@@ -265,14 +264,7 @@ function AnnouncementBar() {
           <>
             <Sparkles className="me-2 size-3.5 shrink-0 text-gold-300 motion-safe:animate-pulse" aria-hidden />
             <span className="bg-gradient-to-r from-gold-100 via-white to-gold-100 bg-clip-text text-transparent">{m.text}</span>
-            {m.linkPath ? (
-              <span className="ms-2.5 inline-flex shrink-0 items-center gap-1 rounded-full bg-gold-300 px-2 py-0.5 text-[10px] font-semibold tracking-[0.14em] text-accent-950 transition-colors group-hover/announce:bg-gold-200">
-                {nav.announcementGo}
-                <ArrowRight className="size-3 rtl:-scale-x-100" aria-hidden />
-              </span>
-            ) : (
-              <Sparkles className="ms-2 size-3.5 shrink-0 text-gold-300 motion-safe:animate-pulse" aria-hidden />
-            )}
+            <Sparkles className="ms-2 size-3.5 shrink-0 text-gold-300 motion-safe:animate-pulse" aria-hidden />
           </>
         );
         const className = cn(

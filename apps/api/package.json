@@ -28,6 +28,7 @@
     "helmet": "^8.0.0",
     "jose": "^6.2.12",
     "nestjs-pino": "^4.6.1",
+    "onnxruntime-node": "1.30.0",
     "pino-http": "^10.4.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",

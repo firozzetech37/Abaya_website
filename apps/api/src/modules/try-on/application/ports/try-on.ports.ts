@@ -158,3 +158,14 @@ export interface PreviewChecker {
   classifyRequest(question: string): Promise<{ kept: string; leftOut: string[] } | null>;
 }
 export const PREVIEW_CHECKER = Symbol('PREVIEW_CHECKER');
+
+/** Puts her real face back on a finished photo try-on (FASHN retouches faces). */
+export interface FaceKeeper {
+  /**
+   * The result with her own face from `original` blended in (`kept`), or the result unchanged
+   * when the heads are not in the same position (`kept: false`, with how alike they were);
+   * null when no face was found or it could not run.
+   */
+  keepFace(original: Buffer, result: Buffer): Promise<{ data: Buffer; contentType: string; score: number; kept: boolean } | null>;
+}
+export const FACE_KEEPER = Symbol('FACE_KEEPER');

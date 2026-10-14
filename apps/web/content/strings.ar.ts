@@ -44,8 +44,6 @@ export const nav = {
   tryOnBannerBody: 'شاهدي نفسك بعباءاتنا الجديدة',
   tryOnBannerShort: 'شاهديها عليكِ',
   tryOnBannerClose: 'إخفاء هذا الشريط',
-  /** On a clickable announcement. */
-  announcementGo: 'اكتشفي',
   closeMenu: 'إغلاق القائمة',
   home: 'الرئيسية',
   cta: 'صمّمي عباءتك',
@@ -464,7 +462,7 @@ export const tryOn = {
   making: 'نُجهّز معاينتك ونطابقها مع الصورة الأصلية… نحو 40 ثانية',
   makingTryOn: 'نُلبسك العباءة… نحو 30 ثانية',
   // Waiting screen (try-on) and the notice when it is ready
-  waitUsually: (long: boolean): string => (long ? 'تجهز عادةً خلال دقيقة إلى دقيقتين' : 'تجهز عادةً خلال 30 إلى 60 ثانية'),
+  waitUsually: (long: boolean): string => (long ? 'تجهز عادةً خلال دقيقة إلى دقيقتين' : 'تجهز عادةً خلال دقيقة تقريبًا'),
   waitStageUpload: 'نرفع صورتك ونتحقق منها',
   waitStageQueue: 'نرسلها إلى استوديو الذكاء الاصطناعي',
   waitStageModel: 'نُنشئ عارضة بطولك وقوامك',
@@ -502,7 +500,7 @@ export const tryOn = {
   retry: 'حاولي مجددًا',
   dialogTitle: 'جرّبيها',
   dialogBody: 'ارفعي صورة كاملة لك وشاهدي هذه العباءة عليك.',
-  tips: ['قفي مستقيمة أمام الكاميرا وجسمك كاملًا في الصورة', 'إضاءة جيدة وخلفية بسيطة إن أمكن', 'الملابس الخفيفة أو الضيّقة تعطي أفضل نتيجة'],
+  tips: ['قفي مستقيمة أمام الكاميرا وجسمك كاملًا في الصورة', 'انزعي الشال أو الدوبتا أو الوشاح على الكتفين والسترة', 'الملابس الضيّقة والبسيطة تعطي أفضل نتيجة، مع إضاءة جيدة وخلفية بسيطة إن أمكن'],
   choosePhoto: 'اختاري صورة',
   changePhoto: 'تغيير الصورة',
   photoFormats: 'JPEG أو PNG أو WebP أو HEIC من الآيفون، حتى 10 ميغابايت',

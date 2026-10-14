@@ -27,6 +27,7 @@ import {
   INACCURATE_MESSAGE,
   INACCURATE_TRYON_MESSAGE,
   PHOTO_QUESTION,
+  planCredits,
   TRYON_SOURCE_SIDE,
   photoTip,
   previewPlan,
@@ -200,7 +201,7 @@ export class TryOnService {
     }
 
     const plan = tryOnPlan(subject.style, { mode: body.mode, body: body.body ?? null });
-    const credits = plan.steps.length * CUSTOMER_PREVIEW_CREDITS.TRYON;
+    const credits = planCredits(plan.endpoints);
     await this.assertAllowance(actor, 'TRYON', credits, now);
     // A design photo goes to FASHN as a small copy (made once); her photo is checked meanwhile.
     const [fashnSource] = await Promise.all([

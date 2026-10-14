@@ -145,7 +145,10 @@ describe('Website AI preview and try-on (e2e)', () => {
     expect(run.inputs.model_image).toContain(personPath);
     expect(run.inputs.product_image).toContain('customer-previews/'); // she wears her customised preview
     expect(run.inputs.prompt).toContain('Transfer ONLY the abaya');
-    expect(run.inputs.prompt).toContain('Keep her face, skin tone, body shape');
+    expect(run.inputs.prompt).toContain('Keep her face exactly as in her photo');
+    // Her own outfit is replaced (no shawl or top showing), in FASHN's balanced quality.
+    expect(run.inputs.prompt).toContain('Replace her own outfit completely');
+    expect(run.inputs.generation_mode).toBe('balanced');
     // Checked with three pictures: the abaya, her photo, and the result.
     expect(ctx.checker.shown.at(-1)).toEqual(['Image 1 (the abaya)', 'Image 2 (her photo)', 'Image 3 (try-on result)']);
     expect(ctx.checker.asked.at(-1)).toContain('it must be the same woman');
@@ -260,7 +263,8 @@ describe('Website AI preview and try-on (e2e)', () => {
     expect((await sharp(ctx.storage.files.get(`private/${good}`)!.body).metadata()).exif).toBeUndefined();
     await ctx.runTryOn();
     const row = await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: made.body.id } });
-    expect(row).toMatchObject({ status: 'DONE', retries: 1, credits: 2, checkNotes: 'Checked' });
+    // A balanced try-on costs 2 credits; remade once: 4.
+    expect(row).toMatchObject({ status: 'DONE', retries: 1, credits: 4, checkNotes: 'Checked' });
     expect(ctx.fashn.runs.at(-1)!.inputs.prompt).toContain('the previous attempt was wrong');
 
     // Wrong twice: an honest message, and it does not use one of her 3 try-ons.
@@ -300,7 +304,8 @@ describe('Website AI preview and try-on (e2e)', () => {
     const done = await ctx.http.get(`/v1/me/try-on/${model.body.id}`).set(as).expect(200);
     expect(done.body).toMatchObject({ status: 'DONE', kind: 'TRYON', imageUrl: expect.any(String) });
     const row = await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: model.body.id } });
-    expect(row).toMatchObject({ credits: 2, personPath: null, stepEndpoints: ['model-create', 'tryon-max'], choices: ['Try-on: a model like me'] });
+    // The model (1 credit) and a balanced try-on (2 credits).
+    expect(row).toMatchObject({ credits: 3, personPath: null, stepEndpoints: ['model-create', 'tryon-max'], choices: ['Try-on: a model like me'] });
     // Her weight is never written down.
     expect(JSON.stringify(row)).not.toMatch(/\b66\b/);
 
@@ -320,7 +325,8 @@ describe('Website AI preview and try-on (e2e)', () => {
     expect(fit).toMatchObject({ endpoint: 'edit' });
     expect(fit!.inputs.prompt).toContain('sleeves end exactly at her wrists');
     expect(fit!.inputs.prompt).toContain('no extra fabric pooling');
-    expect((await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: fitted.body.id } })).credits).toBe(2);
+    // A balanced try-on (2 credits) and the fitting edit (1).
+    expect((await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: fitted.body.id } })).credits).toBe(3);
   });
 
   it('lets the catalog manager see today’s previews and credits, and hide a bad one', async () => {

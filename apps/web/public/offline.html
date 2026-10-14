@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#44111B" />
+    <title>Offline · Abaya Atelier</title>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        font-family: Georgia, 'Times New Roman', serif;
+        color: #fbf0cf;
+        background: radial-gradient(85% 75% at 50% 45%, #7c2b3a 0%, #44111b 62%, #2a0b11 100%);
+        text-align: center;
+      }
+      main { max-width: 420px; }
+      img { width: 96px; height: 96px; border-radius: 22px; box-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.7); }
+      h1 { margin: 24px 0 8px; font-size: 28px; font-weight: 600; color: #f3dc9e; }
+      p { margin: 0 0 6px; font: 15px/1.6 system-ui, -apple-system, sans-serif; color: rgba(255, 255, 255, 0.8); }
+      p[lang='ar'] { direction: rtl; margin-top: 18px; }
+      button {
+        margin-top: 24px;
+        padding: 12px 28px;
+        border: 0;
+        border-radius: 999px;
+        font: 600 15px system-ui, sans-serif;
+        color: #2e0d14;
+        background: linear-gradient(160deg, #e9d49a 0%, #cca24a 55%, #b48734 100%);
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/icons/icon-192.png" alt="" />
+      <h1>You are offline</h1>
+      <p>Abaya Atelier needs an internet connection. Check your connection and try again.</p>
+      <p lang="ar">أنتِ غير متصلة بالإنترنت. تحققي من الاتصال وحاولي مرة أخرى.</p>
+      <button type="button" onclick="location.reload()">Try again · حاولي مجددًا</button>
+    </main>
+  </body>
+</html>

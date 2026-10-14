@@ -6,11 +6,11 @@ import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { LocaleProvider } from '@/components/i18n/locale-provider';
 import { ArchLoader } from '@/components/layout/arch-loader';
-import { TryOnBanner } from '@/components/layout/try-on-banner';
 import { Footer } from '@/components/layout/footer';
 import { Header } from '@/components/layout/header';
 import { RevealObserver } from '@/components/motion/reveal-observer';
 import { Providers } from '@/components/providers';
+import { Pwa } from '@/components/pwa/pwa';
 import { alternatesFor, dictionaryFor, dirFor, htmlLang, isLocale, type Locale, LOCALES, localizePath } from '@/content/i18n';
 import { clerkAppearance } from '@/lib/clerk-appearance';
 import { CLERK_PUBLISHABLE_KEY, isClerkConfigured, LOGIN_PATH, SITE_URL } from '@/lib/env';
@@ -47,6 +47,16 @@ export async function generateMetadata({ params }: { params: Promise<{ lang: str
     alternates: alternatesFor(locale, '/'),
     openGraph: { type: 'website', siteName: brand.name, locale: locale === 'ar' ? 'ar_AR' : 'en_IN' },
     twitter: { card: 'summary_large_image' },
+    // Installable as an app (app/manifest.ts), with the gold arch icon.
+    manifest: '/manifest.webmanifest',
+    icons: {
+      icon: [
+        { url: '/icons/favicon-32.png', sizes: '32x32', type: 'image/png' },
+        { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+      ],
+      apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180' }],
+    },
+    appleWebApp: { capable: true, title: brand.name, statusBarStyle: 'default' },
   };
 }
 
@@ -81,12 +91,12 @@ export default async function RootLayout({ children, params }: Props) {
           <ArchLoader />
           <Providers>
             <Header />
-            <TryOnBanner />
             <main id="main" className="flex-1">
               {children}
             </main>
             <Footer locale={locale} />
             <RevealObserver />
+            <Pwa />
           </Providers>
         </LocaleProvider>
       </body>

@@ -19,6 +19,7 @@ import {
   MAX_ATTEMPTS,
   MAX_CHECK_RETRIES,
   POLL_INTERVAL_MS,
+  planCredits,
   TRYON_CHECK_SIDE,
   type PreviewCheck,
   retryDelayMs,
@@ -30,6 +31,8 @@ import {
   FASHN_CLIENT,
   type FashnClient,
   FashnRequestError,
+  FACE_KEEPER,
+  type FaceKeeper,
   PREVIEW_CHECKER,
   type PreviewChecker,
   TRYON_FILES,
@@ -63,6 +66,7 @@ export class TryOnWorker implements OnModuleInit, OnModuleDestroy {
     @Inject(FASHN_CLIENT) private readonly fashn: FashnClient,
     @Inject(TRYON_FILES) private readonly files: TryOnFiles,
     @Inject(PREVIEW_CHECKER) private readonly checker: PreviewChecker,
+    @Inject(FACE_KEEPER) private readonly faces: FaceKeeper,
     @Inject(APP_CONFIG) private readonly config: Pick<AppConfig, 'TRYON_WORKER_ENABLED' | 'CUSTOMER_AI_KEEP_MINUTES'>,
     private readonly uploads: UploadsService,
     private readonly watermark: WatermarkService,
@@ -194,9 +198,17 @@ export class TryOnWorker implements OnModuleInit, OnModuleDestroy {
     try {
       // FASHN deletes its copy after a few days: keep ours.
       const file = await this.fashn.download(url);
-      path = this.uploads.pathFor('CUSTOMER_PREVIEW', file.contentType);
-      await this.files.write(path, file.data, file.contentType);
-      data = file.data;
+      let picture: { data: Buffer; contentType: typeof file.contentType } = { data: file.data, contentType: file.contentType };
+      // A photo try-on, last step: her own face goes back on (FASHN retouches faces).
+      if (row.kind === 'TRYON' && row.personPath && row.step >= row.steps.length - 1) {
+        const photo = await this.files.read(row.personPath);
+        const kept = photo ? await this.faces.keepFace(photo, file.data) : null;
+        if (kept?.kept) picture = { data: kept.data, contentType: 'image/jpeg' };
+        if (kept) this.logger.log(`Face lock ${kept.kept ? 'applied' : 'skipped (head moved)'} for ${row.id}, match ${kept.score.toFixed(2)}`);
+      }
+      path = this.uploads.pathFor('CUSTOMER_PREVIEW', picture.contentType);
+      await this.files.write(path, picture.data, picture.contentType);
+      data = picture.data;
     } catch (e) {
       this.logger.warn({ id: row.id, err: e instanceof Error ? e.message : e }, 'Could not save customer preview');
       await this.repo.reschedule(row.id, new Date(now.getTime() + retryDelayMs(1)));
@@ -252,7 +264,7 @@ export class TryOnWorker implements OnModuleInit, OnModuleDestroy {
     const notes = verdict.problems.join(' ');
     if (row.retries < MAX_CHECK_RETRIES) {
       const fix = fixInstruction(verdict.problems);
-      await this.repo.restart(row.id, row.steps.map((s) => `${s} ${fix}`), row.steps.length, `Remade: ${notes}`);
+      await this.repo.restart(row.id, row.steps.map((s) => `${s} ${fix}`), planCredits(row.stepEndpoints.length ? row.stepEndpoints : row.steps.map(() => row.endpoint)), `Remade: ${notes}`);
       return true;
     }
     this.logger.warn({ id: row.id, kind: row.kind, problems: verdict.problems }, 'Customer picture failed the accuracy check twice');

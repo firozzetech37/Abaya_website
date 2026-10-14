@@ -4,7 +4,8 @@ import { AiCatalogModule } from '../ai-catalog/ai-catalog.module';
 import { CatalogModule } from '../catalog/catalog.module';
 import { MediaModule } from '../media/media.module';
 import { WatermarkModule } from '../watermark/watermark.module';
-import { CUSTOMER_PREVIEW_REPOSITORY, PREVIEW_CHECKER, TRYON_FILES } from './application/ports/try-on.ports';
+import { CUSTOMER_PREVIEW_REPOSITORY, FACE_KEEPER, PREVIEW_CHECKER, TRYON_FILES } from './application/ports/try-on.ports';
+import { NoFaceKeeper, OnnxFaceKeeper } from './infrastructure/onnx-face-keeper';
 import { GeminiPreviewChecker, NoPreviewChecker } from './infrastructure/gemini-preview-checker';
 import { TryOnWorker } from './application/try-on-worker.service';
 import { TryOnService } from './application/try-on.service';
@@ -24,6 +25,12 @@ import { AdminCustomerPreviewsController, MyTryOnController } from './interface/
     TryOnWorker,
     { provide: CUSTOMER_PREVIEW_REPOSITORY, useClass: PrismaCustomerPreviewRepository },
     { provide: TRYON_FILES, useClass: StorageTryOnFiles },
+    {
+      provide: FACE_KEEPER,
+      inject: [APP_CONFIG],
+      // Off in tests (no model run): try-ons are shown as FASHN made them.
+      useFactory: (config: AppConfig) => (config.NODE_ENV === 'test' ? new NoFaceKeeper() : new OnnxFaceKeeper()),
+    },
     {
       provide: PREVIEW_CHECKER,
       inject: [APP_CONFIG],
