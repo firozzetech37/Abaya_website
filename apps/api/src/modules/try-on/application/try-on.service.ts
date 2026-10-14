@@ -41,6 +41,7 @@ import {
   requestQuestion,
   REQUEST_NOT_ALLOWED,
   REQUEST_UNAVAILABLE,
+  MODEL_TRYON_LINE,
   WORDS_LINE,
   LEFT_OUT_LINE,
 } from '../domain/try-on.rules';
@@ -235,7 +236,7 @@ export class TryOnService {
       selectedOptionValueIds: [],
       // What she asked for, for her own reference (never her weight or measurements).
       choices: [
-        body.mode === 'MODEL' ? 'Try-on: a model like me' : body.body ? 'Try-on: my photo, made to my measurements' : 'Try-on: my photo',
+        body.mode === 'MODEL' ? MODEL_TRYON_LINE : body.body ? 'Try-on: my photo, made to my measurements' : 'Try-on: my photo',
         ...(otherColour ? [CUSTOM_COLOUR_LINE] : []),
         ...(body.backgroundPreset ? [`Background: ${body.backgroundPreset}`] : typedBackground ? [`Background: ${typedBackground}`] : []),
       ],
@@ -328,7 +329,7 @@ export class TryOnService {
     await this.repo.delete(row.id);
   }
 
-  // ───────────── Admin (previews only: try-ons are private) ─────────────
+  // ───────────── Admin (previews and "a model like me" try-ons; photo try-ons are private) ─────────────
 
   async summary(now = new Date()): Promise<AdminCustomerPreviewSummaryDto> {
     const since = startOfIndiaDay(now);
@@ -357,6 +358,7 @@ export class TryOnService {
         const d = subjects.get(p.designId);
         return {
           id: p.id,
+          kind: p.kind,
           design: { id: p.designId, name: d?.name ?? 'Design no longer live', slug: d?.slug ?? '' },
           choices: p.choices,
           status: p.status,

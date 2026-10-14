@@ -84,6 +84,7 @@ export interface CustomerPreviewRepository {
   delete(id: string): Promise<void>;
   /** Try-ons whose photo and result must now be deleted. */
   listExpired(now: Date, limit: number): Promise<CustomerPreviewRecord[]>;
+  /** The admin list: previews and "a model like me" try-ons, newest first. */
   listPreviews(query: { cursor?: string; limit: number; userId?: string }): Promise<{ items: CustomerPreviewRecord[]; nextCursor: string | null }>;
   /** FASHN usage per customer in [since, until) (admin "FASHN usage"). */
   usageByUser(since: Date, until: Date): Promise<CustomerUsageRow[]>;
@@ -95,8 +96,11 @@ export interface CustomerPreviewRepository {
   listRecent(userId: string, designId: string, now: Date, limit: number): Promise<{ row: CustomerPreviewRecord; expiresAt: Date }[]>;
   /** All her pictures she may still see, from every design, newest first. */
   listMine(userId: string, now: Date, limit: number): Promise<{ row: CustomerPreviewRecord; expiresAt: Date }[]>;
-  /** Finished pictures nobody may see any more (to delete): try-ons and previews made before their cut-off. */
-  listUnclaimed(now: Date, madeBefore: { tryOns: Date; previews: Date }, limit: number): Promise<CustomerPreviewRecord[]>;
+  /**
+   * Finished pictures nobody may see any more (to delete): photo try-ons made before `photoTryOns`;
+   * previews and "a model like me" try-ons (kept for the admin) made before `keptForAdmin`.
+   */
+  listUnclaimed(now: Date, madeBefore: { photoTryOns: Date; keptForAdmin: Date }, limit: number): Promise<CustomerPreviewRecord[]>;
   /** Pictures deleted: paths cleared, the time recorded. */
   markPurged(id: string, at: Date): Promise<void>;
   /** The request whose id starts with these 8 hex digits (watermark look-up); null when none or ambiguous. */

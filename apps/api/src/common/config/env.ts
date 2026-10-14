@@ -90,9 +90,9 @@ export const envSchema = z.object({
   /** A customer sees each AI preview or try-on for this many minutes after she got it; then it is deleted. */
   CUSTOMER_AI_KEEP_MINUTES: z.coerce.number().int().min(5).max(7 * 24 * 60).default(60),
   /**
-   * Previews (only the abaya on a model: no customer photo) stay this many days for the admin's
+   * Previews and "a model like me" try-ons (no customer photo) stay this many days for the admin's
    * Customer AI previews page, though the customer still sees each one for CUSTOMER_AI_KEEP_MINUTES.
-   * Try-ons (her face and body) are always deleted after CUSTOMER_AI_KEEP_MINUTES.
+   * Try-ons on her own photo (her face and body) are always deleted after CUSTOMER_AI_KEEP_MINUTES.
    */
   CUSTOMER_AI_PREVIEW_KEEP_DAYS: z.coerce.number().int().min(0).max(365).default(30),
   TRYON_WORKER_ENABLED: bool.optional(),

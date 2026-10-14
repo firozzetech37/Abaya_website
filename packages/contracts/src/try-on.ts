@@ -3,7 +3,8 @@
  * - PREVIEW: one FASHN edit of the design photo showing the customer's chosen options.
  *   Shared: the same design + options is made once and then reused by everyone, free.
  * - TRYON: FASHN try-on of the abaya (or her preview) on a photo of the customer.
- *   Private to her, deleted after TRYON_RETENTION_DAYS. Staff never see try-ons.
+ *   On her photo: private to her, deleted an hour after she got it; staff never see these.
+ *   "A model like me" (no photo of her): listed for the admin like previews.
  * The order is always made from the chosen options, never from a picture.
  */
 import { z } from 'zod';
@@ -141,6 +142,8 @@ export interface CustomerAiLimitsDto {
 
 export interface AdminCustomerPreviewDto {
   id: string;
+  /** PREVIEW, or TRYON for a "a model like me" try-on (photo try-ons are never listed). */
+  kind: CustomerPreviewKind;
   design: { id: string; name: string; slug: string };
   /** The chosen options, as "Group: Value". */
   choices: string[];

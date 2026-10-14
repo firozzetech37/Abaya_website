@@ -119,13 +119,14 @@ export class TryOnWorker implements OnModuleInit, OnModuleDestroy {
    * Each customer sees an AI picture for CUSTOMER_AI_KEEP_MINUTES after she got it. Once nobody's
    * hour is left (a shared preview may have several customers), its files are deleted (the
    * picture, and her own photo for a try-on) and the paths cleared. The row stays, marked, so
-   * credits and daily limits stay right. Previews (no customer photo) are kept longer, for the
-   * admin's Customer AI previews page (CUSTOMER_AI_PREVIEW_KEEP_DAYS); try-ons never are.
+   * credits and daily limits stay right. Previews and "a model like me" try-ons (no photo of her)
+   * are kept longer, for the admin's Customer AI previews page (CUSTOMER_AI_PREVIEW_KEEP_DAYS);
+   * try-ons on her own photo never are.
    */
   private async purgeExpired(now: Date): Promise<number> {
     const keepMs = this.config.CUSTOMER_AI_KEEP_MINUTES * 60_000;
     const previewKeepMs = Math.max(keepMs, (this.config.CUSTOMER_AI_PREVIEW_KEEP_DAYS ?? 0) * 24 * 60 * 60_000);
-    const madeBefore = { tryOns: new Date(now.getTime() - keepMs), previews: new Date(now.getTime() - previewKeepMs) };
+    const madeBefore = { photoTryOns: new Date(now.getTime() - keepMs), keptForAdmin: new Date(now.getTime() - previewKeepMs) };
     let purged = 0;
     for (const row of await this.repo.listUnclaimed(now, madeBefore, 200)) {
       await this.files.remove([row.resultPath, row.personPath, row.workingPath].filter((p): p is string => Boolean(p)));

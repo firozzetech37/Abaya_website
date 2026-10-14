@@ -930,7 +930,7 @@ function TryOnDialog({
               <figcaption className="space-y-1.5 p-3 text-xs text-neutral-600">
                 <span className="flex items-center gap-2">
                   <ShieldCheck className="size-4 shrink-0 text-accent-700" aria-hidden />
-                  {t.privacy}
+                  {mode === 'MODEL' ? t.privacyModel : t.privacy}
                 </span>
                 <span className="block ps-6 text-[11px] text-muted">{t.imageRights}</span>
               </figcaption>

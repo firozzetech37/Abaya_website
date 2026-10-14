@@ -327,6 +327,19 @@ describe('Website AI preview and try-on (e2e)', () => {
     expect(fit!.inputs.prompt).toContain('no extra fabric pooling');
     // A balanced try-on (2 credits) and the fitting edit (1).
     expect((await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: fitted.body.id } })).credits).toBe(3);
+
+    // Two hours on: the try-on on her photo is deleted and never listed;
+    // the model one (no photo of her) stays 30 days on the admin's list, and cannot be hidden.
+    await ctx.runTryOn(new Date(Date.now() + 2 * 3_600_000));
+    expect((await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: fitted.body.id } })).purgedAt).toEqual(expect.any(Date));
+    const kept = await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: model.body.id } });
+    expect(kept.purgedAt).toBeNull();
+    expect(ctx.storage.files.has(`private/${kept.resultPath}`)).toBe(true);
+    const list = await ctx.http.get('/v1/admin/customer-previews').query({ userId: fay.id }).set(manager.auth).expect(200);
+    expect(list.body.items).toEqual([
+      expect.objectContaining({ id: model.body.id, kind: 'TRYON', imageUrl: expect.any(String), choices: ['Try-on: a model like me'] }),
+    ]);
+    await ctx.http.patch(`/v1/admin/customer-previews/${model.body.id}`).set(manager.auth).send({ hidden: true }).expect(404);
   });
 
   it('lets the catalog manager see today’s previews and credits, and hide a bad one', async () => {

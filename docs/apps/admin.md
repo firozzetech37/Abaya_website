@@ -69,9 +69,11 @@ buckets must allow `video/mp4` and `video/webm`: run `pnpm --filter @abaya/db st
 once after upgrading (it is idempotent).
 
 **Customer AI previews** (`/customer-previews`, catalog manager): pictures customers made
-with "Preview my design" on the website, today's previews, try-ons and FASHN credits against
-the daily limit, and **Hide** for a bad preview. Pictures deleted after their hour (no customer
-may see them any more) show "Deleted: an hour after the customer got it" (their credits still count). Customers' try-on photos are private and
+with "Preview my design" on the website and "a model like me" try-ons (badge; no photo of the
+customer), today's previews, try-ons and FASHN credits against the daily limit, and **Hide** for a
+bad preview. Customers see each picture for an hour; it stays here for
+`CUSTOMER_AI_PREVIEW_KEEP_DAYS` (30) days, then shows "Deleted: pictures are kept 30 days" (its
+credits still count). Try-ons on a customer's own photo are private, deleted after the hour and
 never listed (docs/apps/web.md "AI preview and try-on").
 
 **Check an image** (`/image-check`, catalog manager and super admin): upload (drop, paste or

@@ -250,6 +250,11 @@ export function requestQuestion(request: string): string {
 }
 export const REQUEST_NOT_ALLOWED = 'The preview can change the fabric, colours, background and lighting. The design itself stays as our designer made it. Please rephrase your wish.';
 /** Stored in the preview's `choices` so the result can say what was used and what was left out. */
+/**
+ * The first choice line of a "a model like me" try-on (no photo of her: a made-up model with her
+ * height and size). These are kept for the admin like previews; photo try-ons never are.
+ */
+export const MODEL_TRYON_LINE = 'Try-on: a model like me';
 export const WORDS_LINE = 'In her words: ';
 export const LEFT_OUT_LINE = 'Left out: ';
 export const REQUEST_UNAVAILABLE = 'Wishes in your own words are not available right now. Please use the options instead.';

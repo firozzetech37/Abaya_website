@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@abaya/db';
 import type { CustomerPreviewKind } from '@abaya/contracts';
 import { pageArgs, toPage } from '../../../common/pagination';
+import { MODEL_TRYON_LINE } from '../domain/try-on.rules';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import type {
   CustomerPreviewRecord,
@@ -9,6 +10,9 @@ import type {
   CustomerUsageRow,
   NewCustomerPreview,
 } from '../application/ports/try-on.ports';
+
+/** "A model like me" try-ons (no photo of her): kept and listed for the admin like previews. */
+const KEPT_TRYON = { kind: 'TRYON', personPath: null, choices: { has: MODEL_TRYON_LINE } } satisfies Prisma.CustomerPreviewWhereInput;
 
 @Injectable()
 export class PrismaCustomerPreviewRepository implements CustomerPreviewRepository {
@@ -55,14 +59,14 @@ export class PrismaCustomerPreviewRepository implements CustomerPreviewRepositor
     return rows.map((a) => ({ row: a.preview, expiresAt: a.expiresAt }));
   }
 
-  listUnclaimed(now: Date, madeBefore: { tryOns: Date; previews: Date }, limit: number) {
+  listUnclaimed(now: Date, madeBefore: { photoTryOns: Date; keptForAdmin: Date }, limit: number) {
     return this.db.customerPreview.findMany({
       where: {
         purgedAt: null,
         status: { in: ['DONE', 'FAILED'] },
         OR: [
-          { kind: 'TRYON', createdAt: { lt: madeBefore.tryOns } },
-          { kind: 'PREVIEW', createdAt: { lt: madeBefore.previews } },
+          { kind: 'TRYON', NOT: KEPT_TRYON, createdAt: { lt: madeBefore.photoTryOns } },
+          { OR: [{ kind: 'PREVIEW' }, KEPT_TRYON], createdAt: { lt: madeBefore.keptForAdmin } },
         ],
         access: { none: { expiresAt: { gt: now } } },
       },
@@ -214,7 +218,7 @@ export class PrismaCustomerPreviewRepository implements CustomerPreviewRepositor
 
   async listPreviews(query: { cursor?: string; limit: number; userId?: string }) {
     const rows = await this.db.customerPreview.findMany({
-      where: { kind: 'PREVIEW', ...(query.userId ? { userId: query.userId } : {}) },
+      where: { OR: [{ kind: 'PREVIEW' }, KEPT_TRYON], ...(query.userId ? { userId: query.userId } : {}) },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       ...pageArgs(query.cursor, query.limit),
     });

@@ -21,7 +21,10 @@ import { cn } from '@/lib/utils';
 
 const t = strings.customerPreviews;
 
-/** Website "Preview my design" pictures: usage today, and hiding a bad one. Try-ons are never shown. */
+/**
+ * Website "Preview my design" pictures and "a model like me" try-ons: usage today, and hiding a bad
+ * preview. Try-ons on a customer's own photo are never shown.
+ */
 export default function CustomerPreviewsPage() {
   const me = useCurrentUser();
   const summary = useCustomerPreviewSummary();
@@ -94,6 +97,10 @@ export default function CustomerPreviewsPage() {
                   <Badge className="absolute left-2 top-2 bg-white/95">
                     <EyeOff className="size-3" aria-hidden /> {t.hidden}
                   </Badge>
+                ) : p.kind === 'TRYON' ? (
+                  <Badge className="absolute left-2 top-2 bg-white/95">
+                    <Camera className="size-3" aria-hidden /> {t.modelTryOn}
+                  </Badge>
                 ) : null}
               </div>
               <div className="space-y-1.5 p-2.5 text-xs">
@@ -120,7 +127,7 @@ export default function CustomerPreviewsPage() {
                   </p>
                 ) : null}
                 <p className="text-muted">{formatDateTime(p.createdAt)}</p>
-                {p.status === 'DONE' && !p.purgedAt ? (
+                {p.kind === 'PREVIEW' && p.status === 'DONE' && !p.purgedAt ? (
                   <Button
                     variant="secondary"
                     size="sm"

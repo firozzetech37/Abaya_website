@@ -554,7 +554,7 @@ export const tryOn = {
   badge: 'AI preview · approximate',
   imageRights: 'For your personal use. This picture carries an invisible mark that identifies it.',
   keepNote: (minutes: number) =>
-    `Each AI picture stays in your recent pictures for ${minutes % 60 === 0 ? `${minutes / 60} hour${minutes === 60 ? '' : 's'}` : `${minutes} minutes`}, then it is deleted.`,
+    `Each AI picture stays in your recent pictures for ${minutes % 60 === 0 ? `${minutes / 60} hour${minutes === 60 ? '' : 's'}` : `${minutes} minutes`}. Try-ons on your photo are then deleted; previews and “a model like me” try-ons are kept by our team for 30 days to check quality, then deleted.`,
   recentTitle: 'Your recent pictures',
   recentPreview: 'AI preview',
   recentTryOn: 'Try-on',
@@ -648,13 +648,15 @@ export const tryOn = {
   sleeveHint: 'shoulder to wrist',
   outOfRange: (label: string, min: number, max: number, unit: string) => `${label} must be between ${min} and ${max} ${unit}.`,
   checkFields: 'Please check the measurements marked in red.',
-  consentModel: 'I agree my measurements are sent to our AI provider to make this picture.',
+  consentModel:
+    'I agree my measurements are sent to our AI provider to make this picture. It shows a model, not me; our team may keep it for 30 days to check quality.',
   makingModel: 'Creating a model with your build, then dressing her in the abaya… about a minute',
   makingFit: 'Dressing you in the abaya, then tailoring the length and sleeves… about a minute',
   start: 'Try it on',
   result: 'You in this abaya',
   resultAlt: (name: string) => `You wearing ${name} (AI try-on)`,
   privacy: 'Only you can see this. Deleted automatically an hour after it is made.',
+  privacyModel: 'A model, not you. Yours to see for an hour; our team may keep it 30 days to check quality, then it is deleted.',
   deleteNow: 'Delete my photo and result',
   deleted: 'Your photo and result are deleted.',
   another: 'Try another photo',
@@ -737,7 +739,8 @@ export const account = {
     addresses: 'Where we deliver your abayas.',
     measurements: 'Saved once, used for every abaya you order.',
     wishlist: 'Designs you saved with the heart.',
-    aiPictures: 'Your previews and try-ons from every abaya. Each one is deleted an hour after you got it.',
+    aiPictures:
+      'Your previews and try-ons from every abaya, each for an hour after you got it. Try-ons on your photo are then deleted; other pictures are kept by our team for 30 days, then deleted.',
     notifications: 'How we keep you posted while your abaya is made.',
     privacy: 'Download a copy of your data, or delete your account.',
   },
@@ -1266,6 +1269,7 @@ export const policyPages: Record<PolicySlug, PolicyPage> = {
         list: [
           'Account, addresses and measurement profiles: while your account is active, and deleted when you delete your account.',
           'Order records (including the copy of measurements used for that order): kept for [8] years for accounting and tax law, with your personal details removed if you delete your account.',
+          'AI pictures: a try-on on your own photo, and your photo, are deleted an hour after you got it. AI previews and “a model like me” try-ons (no photo of you) are kept for 30 days so our team can check their quality, then deleted.',
           'Consent and security logs: [x] years.',
         ],
       },
