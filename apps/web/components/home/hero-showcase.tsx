@@ -88,7 +88,10 @@ export function HeroShowcase({ designs }: { designs: DesignCard[] }) {
 
   return (
     <div className="contents">
-      {/* The card: set into the stage, landscape on wide screens, with a short entrance */}
+      {/* The card: set into the stage, landscape on wide screens, with a short entrance. On wide screens
+          it sits just under the try-on banner, its height capped so the whole card fits on the first
+          screen (a wide but short window would otherwise cut it off), and its width follows from the
+          4:3 shape. */}
       <div
         role="region"
         aria-roledescription="carousel"
@@ -102,7 +105,7 @@ export function HeroShowcase({ designs }: { designs: DesignCard[] }) {
           if (!e.currentTarget.contains(e.relatedTarget)) setPaused(false);
         }}
         ref={region}
-        className="relative mt-10 aspect-[4/5] w-full focus-visible:outline-none motion-safe:animate-fade-in sm:aspect-[5/6] lg:absolute lg:end-[4%] lg:top-1/2 lg:mt-0 lg:aspect-[4/3] lg:w-[49%] lg:-translate-y-1/2"
+        className="relative mt-10 aspect-[4/5] w-full focus-visible:outline-none motion-safe:animate-fade-in sm:aspect-[5/6] lg:absolute lg:end-[4%] lg:top-[8.5rem] lg:mt-0 lg:aspect-[4/3] lg:h-[min(36.75vw,calc(100svh-19rem),calc(100%-11rem))] lg:w-auto lg:max-w-[49%]"
       >
         <TiltCard max={2} className="h-full">
           <m.div
