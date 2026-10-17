@@ -17,6 +17,7 @@ import {
   modelTryOnCheckQuestion,
   INACCURATE_MESSAGE,
   INPUT_URL_TTL_SECONDS,
+  isSaved,
   isTemporaryFailure,
   JOB_TIMEOUT_MS,
   judge,
@@ -308,10 +309,10 @@ export class TryOnWorker implements OnModuleInit, OnModuleDestroy {
       if (verdict && !verdict.pass) {
         await this.files.remove([path]);
         this.logger.warn({ id: row.id, problems: verdict.problems }, 'Try-on failed the accuracy check twice; the first picture stays');
-        await this.repo.settle(row.id, `${FAILED_TWICE_NOTE}: ${verdict.problems.join(' ')}`);
-        return true;
+        return this.settled(row, `${FAILED_TWICE_NOTE}: ${verdict.problems.join(' ')}`);
       }
       await this.finish(row, path, data, now, verdict ? checkedNote(verdict.problems) : 'Not checked', { replaces: shown });
+      await this.dropPhotoIfSaved(row);
       return true;
     }
     // Hers now; then the check.
@@ -331,7 +332,16 @@ export class TryOnWorker implements OnModuleInit, OnModuleDestroy {
 
   private async settled(row: CustomerPreviewRecord, notes: string): Promise<true> {
     await this.repo.settle(row.id, notes);
+    await this.dropPhotoIfSaved(row);
     return true;
+  }
+
+  /** She saved this try-on while it was still being checked: now it is final, her own photo goes. */
+  private async dropPhotoIfSaved(row: CustomerPreviewRecord): Promise<void> {
+    if (row.kind !== 'TRYON' || !row.personPath) return;
+    if (!isSaved(await this.repo.accessUntil(row.id, row.userId, new Date()))) return;
+    await this.files.remove([row.personPath]);
+    await this.repo.keepTryOn(row.id, null, { dropPhoto: true });
   }
 
   /**

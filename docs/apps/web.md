@@ -334,6 +334,15 @@ three ways instead:
   choices meanwhile gets the kept picture. Try-ons on her own photo are always deleted after the hour
   and never shown to staff. A shared
   preview is made afresh for the next customer once it is deleted.
+  **Save:** under every finished preview and try-on (and on each card in "My AI pictures") is
+  "Save to My AI pictures" (`POST|DELETE /v1/me/try-on/:id/save`). A saved picture has no hour:
+  her access is stored as `SAVED_UNTIL` (year 9999), so the clean-up never reaches it, and it
+  stays until she removes it (`DELETE /v1/me/try-on/:id`, which for a preview only ends her
+  access) or deletes her account (her try-ons are then deleted, saved ones included). Saving a
+  try-on deletes her own photo at once (only the result is kept; while its check or a better
+  version is still running, as soon as it is final) and lifts the 30-day clean-up. Un-saving
+  gives the usual hour from then. At most `MAX_SAVED_AI_PICTURES` (50) saved per customer
+  (`422 SAVED_LIMIT`). "My AI pictures" shows "Saved" (no time limit) above "Recent" (countdown).
   `User.lastActiveAt` ("last seen", written at most every 10 minutes) is recorded but not used for
   deletion.
 - **No printing.** `@media print` in `app/globals.css` hides every image, video and background

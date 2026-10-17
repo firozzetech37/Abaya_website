@@ -6,6 +6,7 @@ import { IdentityService } from '../../identity/application/identity.service';
 import { DevicesService } from '../../notify/application/devices.service';
 import { NotifyService } from '../../notify/application/notify.service';
 import { OrdersService } from '../../orders/application/orders.service';
+import { TryOnService } from '../../try-on/application/try-on.service';
 
 /**
  * DPDP Act 2023 data rights: access (export) and erasure (delete account).
@@ -21,6 +22,7 @@ export class PrivacyService {
     private readonly orders: OrdersService,
     private readonly notify: NotifyService,
     private readonly devices: DevicesService,
+    private readonly tryOn: TryOnService,
     @Inject(AUTH_PROVIDER_ADMIN) private readonly auth: AuthProviderAdmin,
   ) {}
 
@@ -43,6 +45,7 @@ export class PrivacyService {
     await this.customer.deleteForUser(actor.userId);
     await this.orders.anonymiseForUser(actor.userId);
     await this.devices.deleteForUser(actor.userId);
+    await this.tryOn.deleteForUser(actor.userId); // AI pictures, saved ones included
     await this.notify.deleteForUser(actor.userId); // queued messages hold email/phone
     await this.identity.scrub(actor.userId, {
       actorUserId: actor.userId,

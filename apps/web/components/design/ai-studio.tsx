@@ -18,6 +18,7 @@ import { usePathname, useRouter } from '@/components/i18n/navigation';
 import { HEIC_ACCEPT, jpegFromHeic, looksLikeHeic } from '@/lib/heic';
 import { type BackgroundChoice, BackgroundPicker } from './background-picker';
 import { CameraCapture, canUseCamera } from './camera-capture';
+import { SavePictureButton } from './save-picture-button';
 import { useOrderingOpen } from '@/lib/queries/ordering';
 import { TryOnChoice, type TryOnVersion } from './try-on-choice';
 import { guideSeen, TryOnGuide } from './try-on-guide';
@@ -318,6 +319,10 @@ export function AiStudio({
                   {done.kind === 'TRYON' ? `${t.tryOnBadge} · ${done.customised ? t.versionCustom : t.versionOriginal}` : t.badge}
                 </span>
               </div>
+              {/* Keep it: saved pictures have no hour */}
+              <div className="border-b border-border/70 px-3 py-2.5">
+                <SavePictureButton picture={done} />
+              </div>
               <figcaption className="space-y-1 p-3 text-xs leading-relaxed text-neutral-600">
                 {previewOf === FROM_RECENT && <span className="block font-medium text-accent-900">{t.fromRecent}</span>}
                 {stale && <span className="block font-medium text-warning">{t.stale}</span>}
@@ -407,7 +412,8 @@ function RecentStrip({ designId, activeId, onPick }: { designId: string; activeI
   const { tryOn: t } = useStrings();
   const recent = useRecentAiPictures(designId);
   const now = useNow(20_000);
-  const items = (recent.data?.items ?? []).filter((i) => minutesUntil(i.expiresAt, now) > 0);
+  // Saved pictures have no end; the others drop off when their hour is over.
+  const items = (recent.data?.items ?? []).filter((i) => i.saved || minutesUntil(i.expiresAt, now) > 0);
   if (items.length === 0) return null;
   return (
     <div className="relative mt-4">
@@ -469,8 +475,8 @@ function RecentThumb({
           {kind}
         </span>
       </span>
-      <span className={cn('mt-1 block text-[10px] tabular-nums', minutes <= 5 ? 'font-medium text-warning' : 'text-muted')}>
-        {making ? t.recentMaking : t.minutesLeft(minutes)}
+      <span className={cn('mt-1 block text-[10px] tabular-nums', item.saved ? 'font-medium text-accent-900' : minutes <= 5 ? 'font-medium text-warning' : 'text-muted')}>
+        {making ? t.recentMaking : item.saved ? t.save.saved : t.minutesLeft(minutes)}
       </span>
     </button>
   );
@@ -1076,6 +1082,9 @@ function TryOnDialog({
                   {result.data.customised ? <Sparkles className="size-3 text-gold-200" aria-hidden /> : <Camera className="size-3" aria-hidden />}
                   {result.data.customised ? t.versionCustom : t.versionOriginal}
                 </span>
+              </div>
+              <div className="border-b border-border/70 px-3 py-2.5">
+                <SavePictureButton picture={result.data} />
               </div>
               <figcaption className="space-y-1.5 p-3 text-xs text-neutral-600">
                 {/* Shown before its accuracy check: a better one may be on its way, or already swapped in */}

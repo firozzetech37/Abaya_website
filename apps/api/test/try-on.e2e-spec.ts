@@ -606,4 +606,56 @@ describe('Website AI preview and try-on (e2e)', () => {
       .send({ designId, personPath: await photoOf(), backgroundPreset: 'studio', backgroundText: 'a beach', consent: true })
       .expect(400);
   });
+
+  it('keeps a picture she saves (no hour) until she removes it; a saved try-on keeps only the result, never her photo', async () => {
+    const lia = await userWithRoles(ctx, ['CUSTOMER'], 'tryon-lia');
+    const as = { ...lia.auth, 'X-Forwarded-For': '10.77.0.21' };
+    const t0 = Date.now();
+    // Stepped in seconds (the shared test clock may already be hours ahead, past her hour).
+    const worker = ctx.app.get(TryOnWorker);
+    let tick = t0;
+    const run = async () => {
+      for (let i = 0; i < 8; i++) await worker.runOnce(new Date((tick += 2_000)));
+    };
+    // A preview, saved: no end, still hers hours later.
+    const made = await ctx.http.post('/v1/me/try-on/previews').set(as).send({ designId, selectedOptionValueIds: custom, request: 'in a quiet library' }).expect(201);
+    await run();
+    const saved = await ctx.http.post(`/v1/me/try-on/${made.body.id}/save`).set(as).expect(200);
+    expect(saved.body).toMatchObject({ id: made.body.id, saved: true, expiresAt: null, imageUrl: expect.any(String) });
+    // Asking for the same picture again keeps it saved.
+    expect((await ctx.http.post('/v1/me/try-on/previews').set(as).send({ designId, selectedOptionValueIds: custom, request: 'in a quiet library' }).expect(201)).body).toMatchObject({ id: made.body.id, saved: true });
+
+    // A try-on on her photo, saved: her own photo is deleted at once, the result is kept.
+    const up = await ctx.http.post('/v1/me/try-on/uploads').set(as).send({ contentType: 'image/jpeg' }).expect(201);
+    await ctx.storage.put('private', up.body.storagePath, await herPhoto(), 'image/jpeg');
+    const tryOn = await ctx.http.post('/v1/me/try-on/try-ons').set(as).send({ designId, personPath: up.body.storagePath, consent: true }).expect(201);
+    await run();
+    await ctx.http.post(`/v1/me/try-on/${tryOn.body.id}/save`).set(as).expect(200);
+    const kept = await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: tryOn.body.id } });
+    expect(kept).toMatchObject({ personPath: null, expiresAt: null, purgedAt: null });
+    expect(ctx.storage.files.has(`private/${up.body.storagePath}`)).toBe(false);
+    expect(ctx.storage.files.has(`private/${kept.resultPath}`)).toBe(true);
+
+    // 40 days on: both are still there (no hour, no 30-day clean-up), listed as saved on her profile.
+    await ctx.runTryOn(new Date(t0 + 40 * 86_400_000));
+    const mine = await ctx.http.get('/v1/me/try-on/mine').set(as).expect(200);
+    const savedIds = mine.body.items.filter((i: { saved: boolean }) => i.saved).map((i: { id: string }) => i.id);
+    expect(savedIds).toEqual(expect.arrayContaining([made.body.id, tryOn.body.id]));
+    expect(ctx.storage.files.has(`private/${kept.resultPath}`)).toBe(true);
+
+    // Not saved any more: hers for the usual hour from now. Removed: gone for her at once.
+    const unsaved = await ctx.http.delete(`/v1/me/try-on/${made.body.id}/save`).set(as).expect(200);
+    expect(unsaved.body.saved).toBe(false);
+    expect(Date.parse(unsaved.body.expiresAt) - Date.now()).toBeGreaterThan(59 * 60_000);
+    await ctx.http.delete(`/v1/me/try-on/${made.body.id}`).set(as).expect(204);
+    await ctx.http.get(`/v1/me/try-on/${made.body.id}`).set(as).expect(404);
+    // Nobody else can save her pictures.
+    const stranger = await userWithRoles(ctx, ['CUSTOMER'], 'tryon-lia-stranger');
+    await ctx.http.post(`/v1/me/try-on/${tryOn.body.id}/save`).set(stranger.auth).expect(404);
+
+    // She deletes her account: her saved try-on goes with it.
+    await ctx.http.delete('/v1/me').set(as).send({ confirm: 'DELETE' }).expect(204);
+    expect(ctx.storage.files.has(`private/${kept.resultPath}`)).toBe(false);
+    expect(await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: tryOn.body.id } })).toMatchObject({ resultPath: null, purgedAt: expect.any(Date) });
+  });
 });

@@ -165,7 +165,12 @@ export interface CustomerPreviewDto {
   improved: boolean;
   /** The more accurate version failed too: some details may differ from the abaya. */
   mayDiffer: boolean;
+  /** She saved it: kept in "My AI pictures" until she removes it (`expiresAt` is then null). */
+  saved: boolean;
 }
+
+/** How many AI pictures a customer may keep saved at once. */
+export const MAX_SAVED_AI_PICTURES = 50;
 
 export interface CustomerAiLimitsDto {
   previewsLeft: number;

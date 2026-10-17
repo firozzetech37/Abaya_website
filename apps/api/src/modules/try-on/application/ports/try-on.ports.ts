@@ -108,6 +108,17 @@ export interface CustomerPreviewRepository {
    * previews and "a model like me" try-ons (kept for the admin) made before `keptForAdmin`.
    */
   listUnclaimed(now: Date, madeBefore: { photoTryOns: Date; keptForAdmin: Date }, limit: number): Promise<CustomerPreviewRecord[]>;
+  /** Her try-ons with files still kept (account deletion). */
+  listTryOnsOf(userId: string): Promise<CustomerPreviewRecord[]>;
+  /** She may see none of her pictures any more (account deletion); shared previews stay for others. */
+  endAccessFor(userId: string, now: Date): Promise<void>;
+  /** How many pictures she has saved. */
+  countSaved(userId: string): Promise<number>;
+  /**
+   * A try-on she saved (or no longer saves): `expiresAt` null keeps it past the 30-day clean-up;
+   * `dropPhoto` clears her own photo's path (its file is deleted: only the result is kept).
+   */
+  keepTryOn(id: string, expiresAt: Date | null, opts?: { dropPhoto?: boolean }): Promise<void>;
   /** Pictures deleted: paths cleared, the time recorded. */
   markPurged(id: string, at: Date): Promise<void>;
   /** The request whose id starts with these 8 hex digits (watermark look-up); null when none or ambiguous. */

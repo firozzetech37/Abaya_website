@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@abaya/db';
 import type { CustomerPreviewKind } from '@abaya/contracts';
 import { pageArgs, toPage } from '../../../common/pagination';
-import { MODEL_TRYON_LINE } from '../domain/try-on.rules';
+import { MODEL_TRYON_LINE, SAVED_UNTIL } from '../domain/try-on.rules';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import type {
   CustomerPreviewRecord,
@@ -32,6 +32,22 @@ export class PrismaCustomerPreviewRepository implements CustomerPreviewRepositor
       create: { previewId, userId, receivedAt: at, expiresAt },
       update: { receivedAt: at, expiresAt },
     });
+  }
+
+  listTryOnsOf(userId: string) {
+    return this.db.customerPreview.findMany({ where: { userId, kind: 'TRYON', purgedAt: null } });
+  }
+
+  async endAccessFor(userId: string, now: Date) {
+    await this.db.customerPreviewAccess.updateMany({ where: { userId, expiresAt: { gt: now } }, data: { expiresAt: now } });
+  }
+
+  countSaved(userId: string) {
+    return this.db.customerPreviewAccess.count({ where: { userId, expiresAt: { gte: SAVED_UNTIL }, preview: { purgedAt: null } } });
+  }
+
+  async keepTryOn(id: string, expiresAt: Date | null, opts: { dropPhoto?: boolean } = {}) {
+    await this.db.customerPreview.updateMany({ where: { id, kind: 'TRYON' }, data: { expiresAt, ...(opts.dropPhoto ? { personPath: null } : {}) } });
   }
 
   async accessUntil(previewId: string, userId: string, now: Date) {

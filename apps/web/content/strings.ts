@@ -525,7 +525,7 @@ export const tryOn = {
       {
         title: 'See it on you',
         body: 'It is ready in about a minute. Keep browsing if you like: we will let you know.',
-        points: ['Private: only you can see it', 'Deleted automatically after one hour'],
+        points: ['Private: only you can see it', 'Deleted after one hour, unless you save it'],
       },
     ],
   },
@@ -544,7 +544,20 @@ export const tryOn = {
   keepBrowsing: 'Keep browsing',
   keepBrowsingHint: 'You can close this and look around. We will show a notice here as soon as your picture is ready.',
   readyTitle: 'Your try-on is ready',
-  readyBody: (name: string) => `${name} on you. It stays here for an hour.`,
+  readyBody: (name: string) => `${name} on you. Save it to keep it.`,
+  // Save a picture: kept in "My AI pictures" until she removes it
+  save: {
+    save: 'Save to My AI pictures',
+    saveHint: 'Keep it, no time limit',
+    saved: 'Saved',
+    savedHint: 'In My AI pictures · tap to unsave',
+    saveLabel: 'Save this picture to My AI pictures',
+    unsaveLabel: 'Saved. Tap to remove it from saved',
+    savedToast: 'Saved to My AI pictures',
+    savedToastBody: 'It stays on your profile until you remove it.',
+    unsavedToast: 'No longer saved. It will be deleted in an hour.',
+    view: 'View',
+  },
   // A try-on is shown at once; its accuracy check runs after
   improving: 'Making an even more accurate version. It will appear here by itself.',
   improved: 'We improved your picture.',
@@ -557,7 +570,7 @@ export const tryOn = {
   /** Shown after `imageRights` when the design's HD photos are for sale: "[Buy the HD design] for …". */
   hdOffer: { link: 'Buy the HD design', rest: 'for this abaya’s photos without a watermark.' },
   keepNote: (minutes: number) =>
-    `Each AI picture stays in your recent pictures for ${minutes % 60 === 0 ? `${minutes / 60} hour${minutes === 60 ? '' : 's'}` : `${minutes} minutes`}. Try-ons on your photo are then deleted; previews and “a model like me” try-ons are kept by our team for 48 hours to check quality, then deleted.`,
+    `Each AI picture stays in your recent pictures for ${minutes % 60 === 0 ? `${minutes / 60} hour${minutes === 60 ? '' : 's'}` : `${minutes} minutes`}. Tap Save to keep one in My AI pictures. Unsaved try-ons on your photo are then deleted; previews and “a model like me” try-ons are kept by our team for 48 hours to check quality, then deleted.`,
   recentTitle: 'Your recent pictures',
   recentPreview: 'AI preview',
   recentTryOn: 'Try-on',
@@ -620,7 +633,7 @@ export const tryOn = {
   wearPreview: 'Wear my customised version',
   wearPreviewHint: 'Uses your AI preview above. Otherwise the abaya from our photos.',
   consent:
-    'I agree my photo is sent to our AI provider to make this picture. Only I can see it, and it is deleted automatically an hour after it is made.',
+    'I agree my photo is sent to our AI provider to make this picture. Only I can see it. It is deleted automatically an hour after it is made, unless I save it; my own photo is never kept.',
   consentRequired: 'Please agree to the photo terms first.',
   photoRequired: 'Please choose a photo first.',
   // Ways to try it on, and her measurements
@@ -677,7 +690,7 @@ export const tryOn = {
   start: 'Try it on',
   result: 'You in this abaya',
   resultAlt: (name: string) => `You wearing ${name} (AI try-on)`,
-  privacy: 'Only you can see this. Deleted automatically an hour after it is made.',
+  privacy: 'Only you can see this. Deleted automatically an hour after it is made, unless you save it.',
   privacyModel: 'A model, not you. Yours to see for an hour; our team may keep it 48 hours to check quality, then it is deleted.',
   deleteNow: 'Delete my photo and result',
   deleted: 'Your photo and result are deleted.',
@@ -759,7 +772,7 @@ export const account = {
     measurements: 'Saved once, used for every abaya you order.',
     wishlist: 'Designs you saved with the heart.',
     aiPictures:
-      'Your previews and try-ons from every abaya, each for an hour after you got it. Try-ons on your photo are then deleted; other pictures are kept by our team for 48 hours, then deleted.',
+      'Pictures you saved stay here until you remove them. Others stay for an hour after you got them; unsaved try-ons on your photo are then deleted, other pictures are kept by our team for 48 hours, then deleted.',
     notifications: 'How we keep you posted while your abaya is made.',
     privacy: 'Download a copy of your data, or delete your account.',
   },
@@ -801,7 +814,22 @@ export const account = {
     browse: 'Browse abayas',
     preview: 'Preview',
     tryOn: 'Try-on',
-    madeAgo: (minutes: number) => (minutes < 1 ? 'Made just now' : `Made ${minutes} min ago`),
+    madeAgo: (minutes: number) =>
+      minutes < 1
+        ? 'Made just now'
+        : minutes < 60
+          ? `Made ${minutes} min ago`
+          : minutes < 48 * 60
+            ? `Made ${Math.floor(minutes / 60)} h ago`
+            : `Made ${Math.floor(minutes / 1440)} days ago`,
+    savedTitle: 'Saved',
+    savedHint: 'Kept until you remove them.',
+    recentTitle: 'Recent',
+    recentHint: 'Deleted an hour after you got them, unless you save them.',
+    savedBadge: 'Saved',
+    keptForYou: 'Saved · no time limit',
+    remove: 'Remove',
+    removed: 'Picture removed.',
     deletedIn: (minutes: number) => (minutes <= 1 ? 'Deleted in less than a minute' : `Deleted in ${minutes} min`),
     timeLeft: 'Time left',
     beingMade: 'Being made…',
@@ -812,7 +840,7 @@ export const account = {
     deleteNow: 'Delete now',
     deleted: 'Picture deleted.',
     close: 'Close',
-    noSave: 'For viewing only. This picture cannot be saved and carries a watermark.',
+    noSave: 'For viewing on our website. It cannot be downloaded and carries a watermark.',
   },
   wishlist: {
     empty: 'Tap the heart on any design to save it here.',
@@ -1288,7 +1316,7 @@ export const policyPages: Record<PolicySlug, PolicyPage> = {
         list: [
           'Account, addresses and measurement profiles: while your account is active, and deleted when you delete your account.',
           'Order records (including the copy of measurements used for that order): kept for [8] years for accounting and tax law, with your personal details removed if you delete your account.',
-          'AI pictures: a try-on on your own photo, and your photo, are deleted an hour after you got it. AI previews and “a model like me” try-ons (no photo of you) are kept for 48 hours so our team can check their quality, then deleted.',
+          'AI pictures: pictures you save are kept until you remove them or delete your account (for a try-on, only the result: your own photo is deleted at once). Otherwise, a try-on on your own photo, and your photo, are deleted an hour after you got it. AI previews and “a model like me” try-ons (no photo of you) are kept for 48 hours so our team can check their quality, then deleted.',
           'Consent and security logs: [x] years.',
         ],
       },

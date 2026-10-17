@@ -286,6 +286,13 @@ export const INACCURATE_TRYON_MESSAGE =
 export const INACCURATE_MESSAGE =
   'We couldn’t make an accurate preview of this combination. Your abaya will still be made exactly to your choices.';
 
+/**
+ * A saved picture: her access to it never runs out (stored as this far-off date, so the hourly
+ * clean-up, which deletes pictures nobody may see any more, simply never reaches it).
+ */
+export const SAVED_UNTIL = new Date('9999-01-01T00:00:00.000Z');
+export const isSaved = (expiresAt: Date | null | undefined): boolean => Boolean(expiresAt && expiresAt.getTime() >= SAVED_UNTIL.getTime());
+
 /** A try-on shown before its accuracy check (its `checkNotes` until the check answers). */
 export const CHECKING_NOTE = 'Checking';
 /** A try-on whose better version failed the check too: the first picture stays (details may differ). */

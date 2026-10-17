@@ -16,6 +16,7 @@ import {
   previewKey,
   type UploadUrlResponse,
   type TryOnPhotoCheckDto,
+  MAX_SAVED_AI_PICTURES,
 } from '@abaya/contracts';
 import { APP_CONFIG, type AppConfig } from '../../../common/config/config.module';
 import type { Actor } from '../../../common/auth/auth.types';
@@ -48,6 +49,9 @@ import {
   WORDS_LINE,
   LEFT_OUT_LINE,
   FAILED_TWICE_NOTE,
+  CHECKING_NOTE,
+  isSaved,
+  SAVED_UNTIL,
 } from '../domain/try-on.rules';
 import {
   CUSTOMER_PREVIEW_REPOSITORY,
@@ -77,7 +81,7 @@ const CUSTOM_COLOUR_LINE = 'Customised colour';
 const CHECKED_PHOTO_TTL_MS = 30 * 60_000;
 const RECENT_LIMIT = 12;
 /** At most this many on her profile (a day's allowance is far fewer, and each lasts an hour). */
-const MINE_LIMIT = 60;
+const MINE_LIMIT = 100;
 
 type Limits = Pick<
   AppConfig,
@@ -328,17 +332,84 @@ export class TryOnService {
 
   /** She may see this picture for CUSTOMER_AI_KEEP_MINUTES from now; returns until when. */
   private async giveTo(actor: Actor, previewId: string, now: Date): Promise<Date> {
+    // Asking again for a picture she saved keeps it saved.
+    const current = await this.repo.accessUntil(previewId, actor.userId, now);
+    if (isSaved(current)) return current!;
     const until = new Date(now.getTime() + this.config.CUSTOMER_AI_KEEP_MINUTES * 60_000);
     await this.repo.grantAccess(previewId, actor.userId, now, until);
     return until;
   }
 
-  /** She deletes her try-on (her photo and the result) straight away. */
-  async remove(actor: Actor, id: string): Promise<void> {
+  /**
+   * She deletes a picture straight away: her try-on (her photo and the result), or a preview
+   * (gone for her; a shared preview stays for the other customers who have it).
+   */
+  async remove(actor: Actor, id: string, now = new Date()): Promise<void> {
     const row = await this.repo.findById(id);
+    if (row?.kind === 'PREVIEW' && (await this.repo.accessUntil(row.id, actor.userId, now))) {
+      await this.repo.grantAccess(row.id, actor.userId, now, now);
+      return;
+    }
     if (!row || row.kind !== 'TRYON' || row.userId !== actor.userId) throw new NotFoundError('Try-on');
     await this.files.remove([row.personPath, row.resultPath].filter((p): p is string => Boolean(p)));
     await this.repo.delete(row.id);
+  }
+
+  /**
+   * She saves a picture: it stays in "My AI pictures" until she removes it (no hour). A try-on's
+   * own photo is deleted at once (only the result is kept); while its accuracy check or a better
+   * version is still running, the worker deletes it as soon as the picture is final.
+   */
+  async save(actor: Actor, id: string, now = new Date()): Promise<CustomerPreviewDto> {
+    const { row, until } = await this.herPicture(actor, id, now);
+    if (row.status !== 'DONE' && !isImproving(row)) throw new BusinessRuleError('PICTURE_NOT_READY', 'Wait until your picture is ready, then save it.');
+    if (!isSaved(until)) {
+      if ((await this.repo.countSaved(actor.userId)) >= MAX_SAVED_AI_PICTURES) {
+        throw new BusinessRuleError(
+          'SAVED_LIMIT',
+          `You can keep up to ${MAX_SAVED_AI_PICTURES} saved pictures. Remove one in My AI pictures to save this one.`,
+          { limit: MAX_SAVED_AI_PICTURES },
+        );
+      }
+      await this.repo.grantAccess(row.id, actor.userId, now, SAVED_UNTIL);
+    }
+    if (row.kind === 'TRYON') {
+      const final = !isImproving(row) && row.checkNotes !== CHECKING_NOTE;
+      if (final && row.personPath) await this.files.remove([row.personPath]);
+      await this.repo.keepTryOn(row.id, null, { dropPhoto: final });
+    }
+    return this.toDto((await this.repo.findById(row.id)) ?? row, undefined, SAVED_UNTIL);
+  }
+
+  /**
+   * Her account is deleted: her try-ons (results, and any photo still kept) are deleted at once,
+   * saved ones included; previews are no longer hers (a shared preview stays for the others who
+   * have it). The rows stay, cleared, so the FASHN usage report still adds up.
+   */
+  async deleteForUser(userId: string, now = new Date()): Promise<void> {
+    for (const row of await this.repo.listTryOnsOf(userId)) {
+      await this.files.remove([row.resultPath, row.personPath, row.workingPath].filter((p): p is string => Boolean(p)));
+      await this.repo.markPurged(row.id, now);
+    }
+    await this.repo.endAccessFor(userId, now);
+  }
+
+  /** No longer saved: hers for the usual hour from now, then deleted. */
+  async unsave(actor: Actor, id: string, now = new Date()): Promise<CustomerPreviewDto> {
+    const { row, until } = await this.herPicture(actor, id, now);
+    if (!isSaved(until)) return this.toDto(row, undefined, until);
+    const back = new Date(now.getTime() + this.config.CUSTOMER_AI_KEEP_MINUTES * 60_000);
+    await this.repo.grantAccess(row.id, actor.userId, now, back);
+    if (row.kind === 'TRYON') await this.repo.keepTryOn(row.id, tryOnExpiry(now));
+    return this.toDto(row, undefined, back);
+  }
+
+  /** A picture she may see now, and until when. */
+  private async herPicture(actor: Actor, id: string, now: Date) {
+    const row = await this.repo.findById(id);
+    const until = row && !row.purgedAt ? await this.repo.accessUntil(row.id, actor.userId, now) : null;
+    if (!row || !until || !this.mayView(actor, row)) throw new NotFoundError('Picture');
+    return { row, until };
   }
 
   // ───────────── Admin (previews and "a model like me" try-ons; photo try-ons are private) ─────────────
@@ -540,10 +611,12 @@ export class TryOnService {
       improving: isImproving(row),
       improved: row.kind === 'TRYON' && row.status === 'DONE' && row.retries > 0 && !(row.checkNotes ?? '').startsWith(FAILED_TWICE_NOTE),
       mayDiffer: row.kind === 'TRYON' && (row.checkNotes ?? '').startsWith(FAILED_TWICE_NOTE),
+      saved: isSaved(expiresAt),
       error:
         row.status !== 'FAILED' ? null : row.inaccurate ? (row.kind === 'TRYON' ? INACCURATE_TRYON_MESSAGE : INACCURATE_MESSAGE) : row.error,
       createdAt: row.createdAt.toISOString(),
-      expiresAt: (expiresAt ?? null)?.toISOString() ?? null,
+      // A saved picture has no end.
+      expiresAt: expiresAt && !isSaved(expiresAt) ? expiresAt.toISOString() : null,
     };
   }
 }

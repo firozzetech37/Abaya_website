@@ -83,6 +83,18 @@ export class MyTryOnController {
     return this.tryOn.get(actor, id);
   }
 
+  /** Keep it in "My AI pictures" until she removes it (no hour). */
+  @Post(':id/save')
+  @HttpCode(200)
+  save(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string): Promise<CustomerPreviewDto> {
+    return this.tryOn.save(actor, id);
+  }
+
+  @Delete(':id/save')
+  unsave(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string): Promise<CustomerPreviewDto> {
+    return this.tryOn.unsave(actor, id);
+  }
+
   @Delete(':id')
   @HttpCode(204)
   remove(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string): Promise<void> {

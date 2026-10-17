@@ -127,6 +127,22 @@ export function useCreateTryOn() {
   });
 }
 
+/**
+ * Save a picture (kept in "My AI pictures" until she removes it), or stop saving it (hers for the
+ * usual hour from now).
+ */
+export function useSavePicture() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, save }: { id: string; save: boolean }) => api<CustomerPreviewDto>(`/me/try-on/${id}/save`, { method: save ? 'POST' : 'DELETE' }),
+    onSuccess: (dto) => {
+      qc.setQueryData<CustomerPreviewDto>(qk.aiPicture(dto.id), (old) => (old ? { ...old, saved: dto.saved, expiresAt: dto.expiresAt } : dto));
+      void qc.invalidateQueries({ queryKey: RECENT_PREFIX });
+      void qc.invalidateQueries({ queryKey: MINE_KEY });
+    },
+  });
+}
+
 export function useDeleteTryOn() {
   const qc = useQueryClient();
   return useMutation({

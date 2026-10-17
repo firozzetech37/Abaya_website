@@ -1,7 +1,7 @@
 'use client';
 
 import type { MyAiPictureDto } from '@abaya/contracts';
-import { ArrowUpRight, Camera, Clock, Loader2, Sparkles, Trash2, TriangleAlert } from 'lucide-react';
+import { ArrowUpRight, BookmarkCheck, Camera, Clock, Loader2, Sparkles, Trash2, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Link } from '@/components/i18n/navigation';
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Alert, Skeleton } from '@/components/ui/misc';
 import { errorMessage } from '@/lib/api-client';
+import { SavePictureButton } from '@/components/design/save-picture-button';
 import { useDeleteTryOn, useMyAiPictures } from '@/lib/queries/try-on';
 import { cn } from '@/lib/utils';
 
@@ -40,12 +41,12 @@ function ProtectedImage({ src, alt, className }: { src: string; alt: string; cla
 }
 
 /**
- * "My AI pictures" on her profile: every preview and try-on she can still see, from every abaya,
- * with how long ago it was made and a live countdown to when it is deleted. Tap to see it large;
- * pictures being made show progress and appear when ready; expired ones drop off by themselves.
+ * "My AI pictures" on her profile: the pictures she saved (kept until she removes them), then her
+ * recent ones with a live countdown to when they are deleted, each with a save button. Tap to see
+ * it large; pictures being made show progress and appear when ready; expired ones drop off.
  */
 export function MyAiPictures() {
-  const { account, tryOn } = useStrings();
+  const { account } = useStrings();
   const t = account.aiPictures;
   const pictures = useMyAiPictures();
   const now = useNow(15_000);
@@ -67,77 +68,127 @@ export function MyAiPictures() {
       </p>
     );
 
+  const saved = items.filter((p) => p.saved);
+  const recent = items.filter((p) => !p.saved);
   return (
     <>
-      <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
-        {items.map((p) => {
-          const left = p.expiresAt ? Math.max(0, Date.parse(p.expiresAt) - now) : KEEP_MS;
-          const minutesLeft = Math.ceil(left / 60_000);
-          const soon = left <= SOON_MS;
-          const madeAgo = Math.max(0, Math.floor((now - Date.parse(p.createdAt)) / 60_000));
-          const making = p.status === 'QUEUED' || p.status === 'RUNNING';
-          const name = p.design?.name ?? t.unavailable;
-          return (
-            <li key={p.id} className="group">
-              <button
-                type="button"
-                disabled={p.status !== 'DONE' || !p.imageUrl}
-                onClick={() => setOpen(p)}
-                aria-label={t.open(name)}
-                className="relative block w-full overflow-hidden rounded-xl bg-sand-100 ring-1 ring-gold-200/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 disabled:cursor-default"
-              >
-                {p.status === 'DONE' && p.imageUrl ? (
-                  <ProtectedImage src={p.imageUrl} alt="" className="aspect-[3/4] transition-transform duration-700 group-hover:scale-[1.03]" />
-                ) : (
-                  <span className="relative flex aspect-[3/4] flex-col items-center justify-center gap-2 overflow-hidden px-3 text-center text-xs text-neutral-700">
-                    {making ? (
-                      <>
-                        <span aria-hidden className="absolute -inset-x-1/2 inset-y-0 bg-gradient-to-r from-transparent via-white/70 to-transparent motion-safe:animate-shimmer" />
-                        <Loader2 className="relative size-5 animate-spin text-accent-700" aria-hidden />
-                        <span className="relative">{t.beingMade}</span>
-                      </>
-                    ) : (
-                      <>
-                        <TriangleAlert className="size-5 text-warning" aria-hidden />
-                        {t.failed}
-                      </>
-                    )}
-                  </span>
-                )}
-                <span className="absolute start-2 top-2 inline-flex items-center gap-1 rounded-full bg-neutral-950/70 px-2.5 py-1 text-[10px] font-medium text-white backdrop-blur">
-                  {p.kind === 'TRYON' ? <Camera className="size-3" aria-hidden /> : <Sparkles className="size-3" aria-hidden />}
-                  {p.kind === 'TRYON' ? `${t.tryOn} · ${p.customised ? tryOn.versionCustom : tryOn.versionOriginal}` : t.preview}
-                </span>
-              </button>
-
-              <p className="mt-2.5 line-clamp-1 font-display text-lg font-semibold leading-snug">
-                {p.design ? (
-                  <Link href={`/abayas/${p.design.slug}`} className="hover:text-accent-800">
-                    {p.design.name}
-                  </Link>
-                ) : (
-                  <span className="text-muted">{t.unavailable}</span>
-                )}
-              </p>
-              <p className="text-xs text-muted">{t.madeAgo(madeAgo)}</p>
-              <div className="mt-2" title={t.timeLeft}>
-                <p className={cn('flex items-center gap-1.5 text-xs font-medium tabular-nums', soon ? 'text-danger' : 'text-accent-900')}>
-                  <Clock className="size-3.5" aria-hidden />
-                  {t.deletedIn(minutesLeft)}
-                </p>
-                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-sand-200" aria-hidden>
-                  <div
-                    className={cn('h-full rounded-full transition-[width] duration-700', soon ? 'bg-danger' : 'bg-gradient-to-r from-accent-800 to-gold-400')}
-                    style={{ width: `${Math.min(100, (left / KEEP_MS) * 100)}%` }}
-                  />
-                </div>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-      {open && <PictureViewer picture={open} now={now} onClose={() => setOpen(null)} />}
+      <div className="space-y-8">
+        {saved.length > 0 && (
+          <PictureGroup title={t.savedTitle} hint={t.savedHint} icon={<BookmarkCheck className="size-4" aria-hidden />}>
+            {saved.map((p) => (
+              <PictureCard key={p.id} picture={p} now={now} onOpen={() => setOpen(p)} />
+            ))}
+          </PictureGroup>
+        )}
+        {recent.length > 0 && (
+          <PictureGroup title={t.recentTitle} hint={t.recentHint} icon={<Clock className="size-4" aria-hidden />}>
+            {recent.map((p) => (
+              <PictureCard key={p.id} picture={p} now={now} onOpen={() => setOpen(p)} />
+            ))}
+          </PictureGroup>
+        )}
+      </div>
+      {open && <PictureViewer picture={items.find((p) => p.id === open.id) ?? open} now={now} onClose={() => setOpen(null)} />}
     </>
+  );
+}
+
+/** "Saved" or "Recent": a small heading with what happens to these pictures, then the grid. */
+function PictureGroup({ title, hint, icon, children }: { title: string; hint: string; icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section>
+      <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-accent-900">
+          <span className="text-gold-500">{icon}</span>
+          {title}
+        </h3>
+        <p className="text-xs text-muted">{hint}</p>
+      </div>
+      <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">{children}</ul>
+    </section>
+  );
+}
+
+function PictureCard({ picture: p, now, onOpen }: { picture: MyAiPictureDto; now: number; onOpen: () => void }) {
+  const { account, tryOn } = useStrings();
+  const t = account.aiPictures;
+  const left = p.expiresAt ? Math.max(0, Date.parse(p.expiresAt) - now) : KEEP_MS;
+  const minutesLeft = Math.ceil(left / 60_000);
+  const soon = left <= SOON_MS;
+  const madeAgo = Math.max(0, Math.floor((now - Date.parse(p.createdAt)) / 60_000));
+  const making = p.status === 'QUEUED' || p.status === 'RUNNING';
+  const ready = p.status === 'DONE' && Boolean(p.imageUrl);
+  const name = p.design?.name ?? t.unavailable;
+  return (
+    <li className="group">
+      <div className="relative">
+        <button
+          type="button"
+          disabled={!ready}
+          onClick={onOpen}
+          aria-label={t.open(name)}
+          className={cn(
+            'relative block w-full cursor-pointer overflow-hidden rounded-xl bg-sand-100 ring-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 disabled:cursor-default',
+            p.saved ? 'ring-gold-400/80' : 'ring-gold-200/70',
+          )}
+        >
+          {ready ? (
+            <ProtectedImage src={p.imageUrl!} alt="" className="aspect-[3/4] transition-transform duration-700 group-hover:scale-[1.03]" />
+          ) : (
+            <span className="relative flex aspect-[3/4] flex-col items-center justify-center gap-2 overflow-hidden px-3 text-center text-xs text-neutral-700">
+              {making ? (
+                <>
+                  <span aria-hidden className="absolute -inset-x-1/2 inset-y-0 bg-gradient-to-r from-transparent via-white/70 to-transparent motion-safe:animate-shimmer" />
+                  <Loader2 className="relative size-5 animate-spin text-accent-700" aria-hidden />
+                  <span className="relative">{t.beingMade}</span>
+                </>
+              ) : (
+                <>
+                  <TriangleAlert className="size-5 text-warning" aria-hidden />
+                  {t.failed}
+                </>
+              )}
+            </span>
+          )}
+          <span className="absolute start-2 top-2 inline-flex items-center gap-1 rounded-full bg-neutral-950/70 px-2.5 py-1 text-[10px] font-medium text-white backdrop-blur">
+            {p.kind === 'TRYON' ? <Camera className="size-3" aria-hidden /> : <Sparkles className="size-3" aria-hidden />}
+            {p.kind === 'TRYON' ? `${t.tryOn} · ${p.customised ? tryOn.versionCustom : tryOn.versionOriginal}` : t.preview}
+          </span>
+        </button>
+        {/* Save or unsave, right on the card */}
+        {ready && <SavePictureButton picture={p} compact className="absolute bottom-2 end-2" />}
+      </div>
+
+      <p className="mt-2.5 line-clamp-1 font-display text-lg font-semibold leading-snug">
+        {p.design ? (
+          <Link href={`/abayas/${p.design.slug}`} className="hover:text-accent-800">
+            {p.design.name}
+          </Link>
+        ) : (
+          <span className="text-muted">{t.unavailable}</span>
+        )}
+      </p>
+      <p className="text-xs text-muted">{t.madeAgo(madeAgo)}</p>
+      {p.saved ? (
+        <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-accent-900">
+          <BookmarkCheck className="size-3.5 text-gold-500" aria-hidden />
+          {t.keptForYou}
+        </p>
+      ) : (
+        <div className="mt-2" title={t.timeLeft}>
+          <p className={cn('flex items-center gap-1.5 text-xs font-medium tabular-nums', soon ? 'text-danger' : 'text-accent-900')}>
+            <Clock className="size-3.5" aria-hidden />
+            {t.deletedIn(minutesLeft)}
+          </p>
+          <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-sand-200" aria-hidden>
+            <div
+              className={cn('h-full rounded-full transition-[width] duration-700', soon ? 'bg-danger' : 'bg-gradient-to-r from-accent-800 to-gold-400')}
+              style={{ width: `${Math.min(100, (left / KEEP_MS) * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
+    </li>
   );
 }
 
@@ -151,12 +202,17 @@ function PictureViewer({ picture, now, onClose }: { picture: MyAiPictureDto; now
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[92vh] max-w-lg overflow-y-auto">
         <DialogTitle className="font-display text-2xl font-semibold">{name}</DialogTitle>
-        <DialogDescription className={cn('flex items-center gap-1.5 text-sm', left <= SOON_MS ? 'text-danger' : 'text-neutral-700')}>
-          <Clock className="size-4" aria-hidden />
-          {t.deletedIn(Math.ceil(left / 60_000))}
+        <DialogDescription
+          className={cn('flex items-center gap-1.5 text-sm', picture.saved ? 'text-accent-900' : left <= SOON_MS ? 'text-danger' : 'text-neutral-700')}
+        >
+          {picture.saved ? <BookmarkCheck className="size-4 text-gold-500" aria-hidden /> : <Clock className="size-4" aria-hidden />}
+          {picture.saved ? t.keptForYou : t.deletedIn(Math.ceil(left / 60_000))}
         </DialogDescription>
         <figure className="mt-4 overflow-hidden rounded-xl border border-border">
           {picture.imageUrl && <ProtectedImage src={picture.imageUrl} alt={name} className="aspect-[3/4]" />}
+          <div className="border-b border-border/70 px-3 py-2.5">
+            <SavePictureButton picture={picture} />
+          </div>
           <figcaption className="p-3 text-xs text-muted">{t.noSave}</figcaption>
         </figure>
         <div className="mt-4 flex flex-wrap justify-between gap-2">
@@ -167,7 +223,7 @@ function PictureViewer({ picture, now, onClose }: { picture: MyAiPictureDto; now
             onClick={() =>
               remove.mutate(picture.id, {
                 onSuccess: () => {
-                  toast.success(t.deleted);
+                  toast.success(picture.saved ? t.removed : t.deleted);
                   onClose();
                 },
                 onError: (e) => toast.error(errorMessage(e)),
@@ -175,7 +231,7 @@ function PictureViewer({ picture, now, onClose }: { picture: MyAiPictureDto; now
             }
           >
             <Trash2 aria-hidden />
-            {t.deleteNow}
+            {picture.saved ? t.remove : t.deleteNow}
           </Button>
           {picture.design && (
             <Button asChild size="sm" variant="secondary">
