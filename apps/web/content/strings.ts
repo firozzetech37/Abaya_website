@@ -4,7 +4,7 @@
  * read the current language with useStrings().
  * Functions are used where a string needs a value inserted.
  */
-import { type AbayaStyle, type OrderStatus, PRODUCTION_STAGE_LABELS, type ProductionStage, type TryOnBackground } from '@abaya/contracts';
+import { type AbayaStyle, type OrderStatus, PRODUCTION_STAGE_LABELS, type ProductionStage, type TryOnBackground, type TryOnPhotoProblem } from '@abaya/contracts';
 
 export type SortId = 'newest' | 'price_asc' | 'price_desc';
 export type PriceRangeId = 'under-3000' | '3000-5000' | 'over-5000';
@@ -545,6 +545,10 @@ export const tryOn = {
   keepBrowsingHint: 'You can close this and look around. We will show a notice here as soon as your picture is ready.',
   readyTitle: 'Your try-on is ready',
   readyBody: (name: string) => `${name} on you. It stays here for an hour.`,
+  // A try-on is shown at once; its accuracy check runs after
+  improving: 'Making an even more accurate version. It will appear here by itself.',
+  improved: 'We improved your picture.',
+  mayDiffer: 'Some details may differ from the abaya. Another photo may give a closer result.',
   readyView: 'View',
   readyFailedTitle: 'We could not make your try-on',
   readyFailedBody: (name: string) => `${name}: please try again with another photo.`,
@@ -592,6 +596,26 @@ export const tryOn = {
   photoFormats: 'JPEG, PNG, WebP or iPhone HEIC, up to 10 MB',
   preparingPhoto: 'Preparing your photo…',
   photoConvertFailed: 'We could not open this photo. Please try another one, or a JPEG.',
+  // Her photo, checked the moment she picks it
+  photoCheck: {
+    needConsent: 'Tick the box above and we will check your photo straight away.',
+    checking: 'Checking your photo…',
+    good: 'Great photo. Ready to try on.',
+    title: 'This photo will not work for a try-on',
+    problems: {
+      sitting: 'You are sitting in this photo. Please use one where you are standing.',
+      cropped: 'Part of you is cut off. We need your whole body, from head to feet.',
+      half_body: 'This photo shows only part of you. Please step back so your whole body fits, from head to feet.',
+      not_facing: 'We can only see your back or side. Please use a photo where you face the camera.',
+      multiple_people: 'There is more than one person in this photo. Please use a photo of just you.',
+      no_person: 'We could not find a person in this photo. Please use a photo of yourself, standing.',
+      face_hidden: 'Something is covering your face. Please use a photo with nothing in front of your face.',
+      too_dark: 'This photo is too dark. Please use one taken in good light.',
+      blurry: 'This photo is blurry. Please use a sharp one.',
+    } as Record<TryOnPhotoProblem, string>,
+    other: 'Please use a photo where you stand facing the camera, whole body visible, in good light.',
+    chooseAnother: 'Choose another photo',
+  },
   yourPhoto: 'Your photo',
   wearPreview: 'Wear my customised version',
   wearPreviewHint: 'Uses your AI preview above. Otherwise the abaya from our photos.',

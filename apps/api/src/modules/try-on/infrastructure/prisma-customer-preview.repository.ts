@@ -159,22 +159,32 @@ export class PrismaCustomerPreviewRepository implements CustomerPreviewRepositor
     });
   }
 
-  async nextStep(id: string, workingPath: string, step: number) {
+  async nextStep(id: string, workingPath: string, step: number, refund = 0) {
     await this.db.customerPreview.update({
       where: { id },
-      data: { status: 'QUEUED', step, workingPath, providerJobId: null, submittedAt: null, attempts: 0, nextCheckAt: new Date(0) },
+      data: {
+        status: 'QUEUED',
+        step,
+        workingPath,
+        providerJobId: null,
+        submittedAt: null,
+        attempts: 0,
+        nextCheckAt: new Date(0),
+        ...(refund > 0 ? { credits: { decrement: refund } } : {}),
+      },
     });
   }
 
-  async restart(id: string, steps: string[], credits: number, checkNotes: string) {
-    await this.db.customerPreview.update({
+  async restart(id: string, steps: string[], credits: number, checkNotes: string, opts: { keepResult?: boolean } = {}) {
+    // updateMany: she may have deleted it meanwhile.
+    await this.db.customerPreview.updateMany({
       where: { id },
       data: {
         status: 'QUEUED',
         steps,
         step: 0,
         workingPath: null,
-        resultPath: null,
+        ...(opts.keepResult ? {} : { resultPath: null }),
         providerJobId: null,
         submittedAt: null,
         attempts: 0,
@@ -191,6 +201,14 @@ export class PrismaCustomerPreviewRepository implements CustomerPreviewRepositor
       where: { id },
       data: { status: 'DONE', resultPath, finishedAt: now, error: null, ...(checkNotes ? { checkNotes } : {}) },
     });
+  }
+
+  async replaceResult(id: string, resultPath: string, checkNotes: string) {
+    await this.db.customerPreview.updateMany({ where: { id }, data: { status: 'DONE', resultPath, error: null, checkNotes } });
+  }
+
+  async settle(id: string, checkNotes: string) {
+    await this.db.customerPreview.updateMany({ where: { id }, data: { status: 'DONE', error: null, checkNotes } });
   }
 
   async failInaccurate(id: string, error: string, checkNotes: string, now: Date) {

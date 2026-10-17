@@ -8,6 +8,7 @@ import type {
   CustomerPreviewDto,
   MyAiPicturesDto,
   RecentAiPicturesDto,
+  TryOnPhotoCheckDto,
   UploadUrlResponse,
 } from '@abaya/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -30,7 +31,11 @@ export function useAiPicture(id: string | null) {
     queryKey: qk.aiPicture(id ?? ''),
     queryFn: () => api<CustomerPreviewDto>(`/me/try-on/${id}`),
     enabled: Boolean(id),
-    refetchInterval: (q) => (q.state.data && (q.state.data.status === 'DONE' || q.state.data.status === 'FAILED') ? false : 3_000),
+    // Every 2 s while it is being made, and while a better try-on is made to replace the one she has.
+    refetchInterval: (q) => {
+      const d = q.state.data;
+      return d && (d.status === 'FAILED' || (d.status === 'DONE' && !d.improving)) ? false : 2_000;
+    },
   });
 }
 
@@ -44,7 +49,7 @@ export function useRecentAiPictures(designId: string) {
     queryKey: qk.aiRecent(designId),
     queryFn: () => api<RecentAiPicturesDto>(`/me/try-on/recent?designId=${encodeURIComponent(designId)}`),
     enabled,
-    refetchInterval: (q) => (q.state.data?.items.some((i) => i.status === 'QUEUED' || i.status === 'RUNNING') ? 5_000 : 30_000),
+    refetchInterval: (q) => (q.state.data?.items.some((i) => i.status === 'QUEUED' || i.status === 'RUNNING' || i.improving) ? 5_000 : 30_000),
   });
 }
 
@@ -61,7 +66,7 @@ export function useMyAiPictures() {
     queryKey: MINE_KEY,
     queryFn: () => api<MyAiPicturesDto>('/me/try-on/mine'),
     enabled,
-    refetchInterval: (q) => (q.state.data?.items.some((i) => i.status === 'QUEUED' || i.status === 'RUNNING') ? 5_000 : 60_000),
+    refetchInterval: (q) => (q.state.data?.items.some((i) => i.status === 'QUEUED' || i.status === 'RUNNING' || i.improving) ? 5_000 : 60_000),
   });
 }
 
@@ -94,12 +99,23 @@ export async function uploadTryOnPhoto(file: File): Promise<string> {
   return signed.storagePath;
 }
 
+/**
+ * Her photo, uploaded and checked the moment she picks it (standing, whole body, facing the camera).
+ * `personPath` is the uploaded photo, used by "Try it on" when it passed.
+ */
+export async function checkTryOnPhoto(file: File): Promise<TryOnPhotoCheckDto & { personPath: string }> {
+  const personPath = await uploadTryOnPhoto(file);
+  const res = await api<TryOnPhotoCheckDto>('/me/try-on/photo-check', { method: 'POST', body: { personPath, consent: true } });
+  return { ...res, personPath };
+}
+
 export function useCreateTryOn() {
   const qc = useQueryClient();
   return useMutation({
-    // A photo try-on uploads her photo first; "a model like me" sends only her measurements.
-    mutationFn: async ({ file, ...rest }: Omit<z.input<typeof createTryOnBody>, 'personPath'> & { file?: File | null }) => {
-      const personPath = file ? await uploadTryOnPhoto(file) : undefined;
+    // A photo try-on uploads her photo first (unless it was uploaded for the photo check); "a model
+    // like me" sends only her measurements.
+    mutationFn: async ({ file, personPath: checked, ...rest }: z.input<typeof createTryOnBody> & { file?: File | null }) => {
+      const personPath = checked ?? (file ? await uploadTryOnPhoto(file) : undefined);
       return api<CustomerPreviewDto>('/me/try-on/try-ons', { method: 'POST', body: { ...rest, ...(personPath ? { personPath } : {}) } });
     },
     onSuccess: (dto) => {

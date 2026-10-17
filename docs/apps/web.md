@@ -210,20 +210,39 @@ respects "reduce motion" and animates transforms and opacity only):
   the prompt: the build goes in as words (height in cm, never weight), nothing is saved to her
   profile, and the prompt is cleared with the picture after its hour. Steps can use different
   endpoints (`CustomerPreview.stepEndpoints`).
-- **Try it on:** she uploads a full-length photo (`POST /v1/me/try-on/uploads`, private
-  bucket `tryon-photos/`) and agrees to the photo terms. Before any credit is spent her photo
-  is turned upright and its hidden data (GPS location) removed, then Gemini vision checks it is
-  usable (one woman, standing, facing the camera, body visible to the knees, good light); an
-  unsuitable photo is deleted and she gets a tip (`422 PHOTO_NOT_SUITABLE`, nothing counted).
+- **Try it on:** she agrees to the photo terms (the box sits right under the photo buttons) and
+  picks or takes a full-length photo. **Photo check:** the moment both are done, the photo is
+  uploaded (`POST /v1/me/try-on/uploads`, private bucket `tryon-photos/`), turned upright, its
+  hidden data (GPS location) removed, and Gemini vision checks it strictly
+  (`POST /v1/me/try-on/photo-check` → `{ ok, checked, problem }`): exactly one person, standing,
+  whole body from head to feet, facing the camera, face not blocked (a hijab or niqab is fine),
+  light and sharp. A photo that fails is deleted at once and she sees why under her photo
+  (`TRYON_PHOTO_PROBLEMS`: sitting, cropped, half_body, not_facing, multiple_people, no_person,
+  face_hidden, too_dark, blurry; English and Arabic), with "Choose another photo" and "Take a
+  photo"; "Try it on" stays disabled meanwhile. A passed photo shows "Great photo" and is trusted
+  by "Try it on" for 30 minutes (not checked again). When Gemini cannot answer the photo is
+  allowed. "Try it on" still checks a photo that was not checked this way (`422
+  PHOTO_NOT_SUITABLE`, nothing counted).
   FASHN `tryon-max` (1K fast) then puts the abaya on her: her customised preview when she made
   one, else the photo of her colour. The instruction transfers ONLY the abaya (never the
   product model's bag, shoes or headscarf) and keeps its silhouette and embroidery, and her
-  face, body, pose, own headscarf and background. Gemini checks the result with three pictures
-  (the abaya, her photo, the result): same woman, same silhouette, embroidery and colour are
-  critical. Wrong: remade once; wrong again: "We couldn't make an accurate try-on with this
-  photo" (not counted). Only she can see it (404 for everyone else; the admin list never
-  includes try-ons). She can delete it at once; otherwise the worker deletes her photo and the
-  result after 30 days.
+  face, body, pose, own headscarf and background. **Shown first, checked after:** she gets the
+  try-on the moment FASHN is done (`checkNotes` "Checking"); Gemini then checks it with three
+  pictures (the abaya, her photo, the result). Only serious problems are critical (another
+  woman's face, her own clothes showing, the wrong silhouette, pattern or colour); details (every
+  panel in its exact place, pose, fit, length) are noted for the admin, never remade. A serious
+  problem makes a better one in the background (`improving: true`, status DONE with her first
+  picture; the page keeps asking every 2 s and says "Making an even more accurate version"); it
+  replaces hers once it passes (`improved: true`, "We improved your picture"). If it fails too,
+  or cannot be made, she keeps the first (`mayDiffer: true`, "Some details may differ").
+  **Ready-made models:** "a model like me" uses her height to the nearest 5 cm, and each made-up
+  model is kept (`tryon-models/<hash>.jpg`, private) and reused for the next woman of the same
+  height and build: no model step, 1 credit less. **Speed:** FASHN is asked every 1.5 s; the
+  worker looks for work every second while pictures are being made (3 s when idle); Gemini gets
+  at most 10 s for the photo check and background wording (20 s for the accuracy check), and is
+  skipped for 10 minutes after "overloaded" or no answer. Only she can see a photo try-on (404
+  for everyone else). She can delete it at once; otherwise it is deleted an hour after she got
+  it.
 - **Limits** (India day): `CUSTOMER_PREVIEW_DAILY_LIMIT` (20) and `CUSTOMER_TRYON_DAILY_LIMIT`
   (20) per customer, `CUSTOMER_AI_DAILY_CREDIT_LIMIT` (200) for all customers together. Failed
   pictures do not count.

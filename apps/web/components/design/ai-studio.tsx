@@ -1,8 +1,8 @@
 'use client';
 
-import { type CustomerPreviewDto, type MeasurementProfileDto, PREVIEW_REQUEST_MAX, type TryOnBody, type TryOnMode } from '@abaya/contracts';
+import { type CustomerPreviewDto, type MeasurementProfileDto, PREVIEW_REQUEST_MAX, type TryOnBody, type TryOnMode, type TryOnPhotoProblem } from '@abaya/contracts';
 import { m } from 'framer-motion';
-import { Camera, Check, ImagePlus, Loader2, Ruler, ShieldCheck, Sparkles, Trash2, Wand2 } from 'lucide-react';
+import { Camera, Check, CircleAlert, ImagePlus, Loader2, Ruler, ShieldCheck, Sparkles, Trash2, Wand2 } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useStrings } from '@/components/i18n/locale-provider';
@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Alert } from '@/components/ui/misc';
-import { errorMessage, serverText } from '@/lib/api-client';
+import { errorMessage, isApiError, serverText } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 import { OPEN_PICTURE_EVENT, PICTURE_PARAM, watchPicture } from '@/lib/ai-watch';
 import { OPEN_TRYON_EVENT, TRYON_PARAM } from '@/lib/try-on-link';
@@ -21,7 +21,7 @@ import { CameraCapture, canUseCamera } from './camera-capture';
 import { useOrderingOpen } from '@/lib/queries/ordering';
 import { TryOnChoice, type TryOnVersion } from './try-on-choice';
 import { guideSeen, TryOnGuide } from './try-on-guide';
-import { TRYON_ACCEPT, useAiLimits, useAiPicture, useCreatePreview, useCreateTryOn, useDeleteTryOn, useRecentAiPictures } from '@/lib/queries/try-on';
+import { checkTryOnPhoto, TRYON_ACCEPT, useAiLimits, useAiPicture, useCreatePreview, useCreateTryOn, useDeleteTryOn, useRecentAiPictures } from '@/lib/queries/try-on';
 import { useMeasurements } from '@/lib/queries/me';
 import { cn, loginHref } from '@/lib/utils';
 
@@ -800,6 +800,68 @@ function DevelopingImage({ src, alt, className }: { src: string; alt: string; cl
   );
 }
 
+/** Her photo's check: not yet, running, passed (uploaded at `personPath`), or refused with the reason. */
+type PhotoCheck =
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'ok'; personPath: string; checked: boolean }
+  | { state: 'bad'; problem: TryOnPhotoProblem | null; message?: string };
+
+/** Under her photo: checking, "great photo", or what is wrong with it and how to pick another. */
+function PhotoCheckNote({
+  check,
+  hasPhoto,
+  consent,
+  onChoose,
+  onTake,
+}: {
+  check: PhotoCheck;
+  hasPhoto: boolean;
+  consent: boolean;
+  onChoose: () => void;
+  onTake: () => void;
+}) {
+  const { tryOn: t } = useStrings();
+  if (!hasPhoto) return null;
+  if (!consent) return <p className="text-xs text-muted">{t.photoCheck.needConsent}</p>;
+  if (check.state === 'checking') {
+    return (
+      <p role="status" className="flex items-center gap-2 text-sm text-neutral-700">
+        <Loader2 className="size-4 animate-spin text-accent-700" aria-hidden />
+        {t.photoCheck.checking}
+      </p>
+    );
+  }
+  if (check.state === 'ok' && check.checked) {
+    return (
+      <p role="status" className="flex items-center gap-2 text-sm font-medium text-emerald-700">
+        <Check className="size-4" aria-hidden />
+        {t.photoCheck.good}
+      </p>
+    );
+  }
+  if (check.state !== 'bad') return null;
+  return (
+    <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-sm">
+      <p className="flex items-center gap-2 font-semibold text-rose-900">
+        <CircleAlert className="size-4 shrink-0" aria-hidden />
+        {t.photoCheck.title}
+      </p>
+      <p className="mt-1 ps-6 leading-relaxed text-rose-900/90">{check.message ?? (check.problem ? t.photoCheck.problems[check.problem] : t.photoCheck.other)}</p>
+      <div className="mt-3 flex flex-wrap gap-2 ps-6">
+        <Button type="button" size="sm" onClick={onChoose}>
+          <ImagePlus aria-hidden />
+          {t.photoCheck.chooseAnother}
+        </Button>
+        <Button type="button" size="sm" variant="secondary" onClick={onTake}>
+          <Camera aria-hidden />
+          {t.takePhoto}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function TryOnDialog({
   design,
   version,
@@ -828,17 +890,44 @@ function TryOnDialog({
   const [fit, setFit] = useState(false);
   const [body, setBody] = useState<BodyDraft>(EMPTY_BODY);
   const [file, setFile] = useState<File | null>(null);
+  const [consent, setConsent] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const cameraInput = useRef<HTMLInputElement>(null);
+  // Her photo is checked the moment she picks it (once she agreed to the photo terms): a photo that
+  // cannot work is refused with the reason, before any credit is spent or any waiting.
+  const [photoCheck, setPhotoCheck] = useState<PhotoCheck>({ state: 'idle' });
+  const checkRun = useRef(0);
+  const runPhotoCheck = (photo: File) => {
+    const run = ++checkRun.current;
+    setPhotoCheck({ state: 'checking' });
+    checkTryOnPhoto(photo)
+      .then((res) => {
+        if (run !== checkRun.current) return;
+        setPhotoCheck(res.ok ? { state: 'ok', personPath: res.personPath, checked: res.checked } : { state: 'bad', problem: res.problem });
+      })
+      .catch((e: unknown) => {
+        if (run !== checkRun.current) return;
+        // A file we cannot take: say so. Anything else (offline, busy): "Try it on" uploads it as before.
+        const refused = isApiError(e) && ['UNSUPPORTED_FILE', 'FILE_TOO_LARGE', 'PHOTO_MISSING'].includes(e.code);
+        setPhotoCheck(refused ? { state: 'bad', problem: null, message: errorMessage(e) } : { state: 'idle' });
+      });
+  };
+  /** A new photo (or none): forget the last check, and check this one if she already agreed. */
+  const choosePhoto = (photo: File | null) => {
+    setFile(photo);
+    checkRun.current++;
+    setPhotoCheck({ state: 'idle' });
+    if (photo && consent) runPhotoCheck(photo);
+  };
   /** A picked or captured photo: HEIC is turned into a JPEG first. */
   const takePicked = (chosen: File) => {
-    if (!looksLikeHeic(chosen)) return setFile(chosen);
+    if (!looksLikeHeic(chosen)) return choosePhoto(chosen);
     setPreparing(true);
     jpegFromHeic(chosen)
-      .then(setFile)
+      .then(choosePhoto)
       .catch(() => {
-        setFile(null);
+        choosePhoto(null);
         setMessage(t.photoConvertFailed);
       })
       .finally(() => setPreparing(false));
@@ -854,14 +943,13 @@ function TryOnDialog({
   const [chainId, setChainId] = useState<string | null>(null);
   const chain = useAiPicture(chainId);
   const pending = useRef<Parameters<typeof create.mutate>[0] | null>(null);
-  const [consent, setConsent] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [resultId, setResultId] = useState<string | null>(null);
   const create = useCreateTryOn();
   const remove = useDeleteTryOn();
   const result = useAiPicture(resultId);
 
-  // The chosen photo is shown from memory only; it leaves the browser when she presses "Try it on".
+  // The chosen photo is shown from memory; it leaves the browser only once she agreed to the photo terms (to be checked).
   const photoUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
   useEffect(() => () => {
     if (photoUrl) URL.revokeObjectURL(photoUrl);
@@ -876,6 +964,8 @@ function TryOnDialog({
   const start = () => {
     if (mode === 'PHOTO' && preparing) return setMessage(t.preparingPhoto);
     if (mode === 'PHOTO' && !file) return setMessage(t.photoRequired);
+    if (mode === 'PHOTO' && photoCheck.state === 'checking') return setMessage(t.photoCheck.checking);
+    if (mode === 'PHOTO' && photoCheck.state === 'bad') return;
     // Checked here first: a wrong value never reaches the AI (and costs no credit).
     if (problems.size > 0) {
       setShowProblems(true);
@@ -897,7 +987,8 @@ function TryOnDialog({
     const request = {
       ...backgroundField,
       ...(figure ? { figure } : {}),
-      file: mode === 'PHOTO' ? file : null,
+      // Uploaded (and checked) when she picked it, or uploaded now.
+      ...(mode === 'PHOTO' && photoCheck.state === 'ok' ? { personPath: photoCheck.personPath } : { file: mode === 'PHOTO' ? file : null }),
       designId: design.id,
       mode,
       ...(measured ? { body: measured } : {}),
@@ -931,8 +1022,24 @@ function TryOnDialog({
 
   const reset = () => {
     setResultId(null);
-    setFile(null);
+    choosePhoto(null);
   };
+
+  const consentBox = (
+    <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-sand-200 bg-sand-50 p-3 text-sm">
+      <Checkbox
+        checked={consent}
+        onCheckedChange={(v) => {
+          const agreed = v === true;
+          setConsent(agreed);
+          setMessage(null);
+          // She agreed after picking her photo: check it now.
+          if (agreed && file && mode === 'PHOTO' && photoCheck.state === 'idle') runPhotoCheck(file);
+        }}
+      />
+      <span className="leading-relaxed text-neutral-700">{mode === 'MODEL' ? t.consentModel : t.consent}</span>
+    </label>
+  );
 
   const status = result.data?.status;
   // Making her customised abaya first (before the try-on starts).
@@ -964,13 +1071,30 @@ function TryOnDialog({
           <div className="mt-4 space-y-3 motion-safe:animate-fade-in">
             <figure className="overflow-hidden rounded-xl border border-border">
               <div className="relative">
-                <DevelopingImage key={result.data.id} src={result.data.imageUrl} alt={t.resultAlt(design.name)} className="aspect-[3/4]" />
+                <DevelopingImage key={`${result.data.id}-${result.data.improved}`} src={result.data.imageUrl} alt={t.resultAlt(design.name)} className="aspect-[3/4]" />
                 <span className="absolute start-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-neutral-950/70 px-3 py-1 text-[11px] font-medium text-white backdrop-blur">
                   {result.data.customised ? <Sparkles className="size-3 text-gold-200" aria-hidden /> : <Camera className="size-3" aria-hidden />}
                   {result.data.customised ? t.versionCustom : t.versionOriginal}
                 </span>
               </div>
               <figcaption className="space-y-1.5 p-3 text-xs text-neutral-600">
+                {/* Shown before its accuracy check: a better one may be on its way, or already swapped in */}
+                {result.data.improving ? (
+                  <span role="status" className="flex items-center gap-2 font-medium text-accent-900">
+                    <Loader2 className="size-4 shrink-0 animate-spin text-accent-700" aria-hidden />
+                    {t.improving}
+                  </span>
+                ) : result.data.improved ? (
+                  <span role="status" className="flex items-center gap-2 font-medium text-emerald-700">
+                    <Check className="size-4 shrink-0" aria-hidden />
+                    {t.improved}
+                  </span>
+                ) : result.data.mayDiffer ? (
+                  <span className="flex items-center gap-2 font-medium text-amber-800">
+                    <CircleAlert className="size-4 shrink-0" aria-hidden />
+                    {t.mayDiffer}
+                  </span>
+                ) : null}
                 <span className="flex items-center gap-2">
                   <ShieldCheck className="size-4 shrink-0 text-accent-700" aria-hidden />
                   {mode === 'MODEL' ? t.privacyModel : t.privacy}
@@ -1068,7 +1192,7 @@ function TryOnDialog({
                 const chosen = e.target.files?.[0] ?? null;
                 e.target.value = '';
                 setMessage(null);
-                if (!chosen || !looksLikeHeic(chosen)) return setFile(chosen);
+                if (!chosen || !looksLikeHeic(chosen)) return choosePhoto(chosen);
                 takePicked(chosen);
               }}
             />
@@ -1126,6 +1250,15 @@ function TryOnDialog({
               <Camera aria-hidden />
               {t.takePhoto}
             </Button>
+            {/* Agree first: then her photo is checked straight away */}
+            {consentBox}
+            <PhotoCheckNote
+              check={photoCheck}
+              hasPhoto={Boolean(file)}
+              consent={consent}
+              onChoose={() => input.current?.click()}
+              onTake={() => (canUseCamera() ? setCameraOpen(true) : cameraInput.current?.click())}
+            />
             {/* Short tips for the photo, under the two ways to add one */}
             <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-600">
               {t.tips.map((tip) => (
@@ -1139,7 +1272,7 @@ function TryOnDialog({
               open={cameraOpen}
               onClose={() => setCameraOpen(false)}
               onPhoto={(photo) => {
-                setFile(photo);
+                choosePhoto(photo);
                 setMessage(null);
               }}
               onChooseInstead={() => {
@@ -1175,16 +1308,7 @@ function TryOnDialog({
             />
 
 
-            <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-sand-200 bg-sand-50 p-3 text-sm">
-              <Checkbox
-                checked={consent}
-                onCheckedChange={(v) => {
-                  setConsent(v === true);
-                  setMessage(null);
-                }}
-              />
-              <span className="leading-relaxed text-neutral-700">{mode === 'MODEL' ? t.consentModel : t.consent}</span>
-            </label>
+            {mode === 'MODEL' && consentBox}
 
             {message || chainError ? <Alert tone="danger">{message ?? chainError}</Alert> : null}
 
@@ -1192,7 +1316,7 @@ function TryOnDialog({
               <Button variant="ghost" onClick={onClose}>
                 {t.close}
               </Button>
-              <Button onClick={start} loading={create.isPending}>
+              <Button onClick={start} loading={create.isPending} disabled={mode === 'PHOTO' && (photoCheck.state === 'checking' || photoCheck.state === 'bad')}>
                 <Camera aria-hidden />
                 {t.start}
               </Button>

@@ -4,7 +4,7 @@
  * prices stay in ₹. Draft translation: have a native speaker review before launch.
  * Legal pages are placeholders and must be reviewed by a lawyer in both languages.
  */
-import type { AbayaStyle, TryOnBackground, OrderStatus, ProductionStage } from '@abaya/contracts';
+import type { AbayaStyle, TryOnBackground, TryOnPhotoProblem, OrderStatus, ProductionStage } from '@abaya/contracts';
 import type { PolicyPage, PolicySlug, PriceRange, SortId } from './strings';
 
 export type { PolicyPage, PolicySection, PolicySlug, PriceRange, PriceRangeId, SortId } from './strings';
@@ -524,6 +524,9 @@ export const tryOn = {
   keepBrowsingHint: 'يمكنك إغلاق هذه النافذة والتجول في الموقع، وسنُظهر لكِ تنبيهًا هنا فور جاهزية صورتك.',
   readyTitle: 'تجربتك جاهزة',
   readyBody: (name: string) => `${name} عليكِ. تبقى هنا لمدة ساعة.`,
+  improving: 'نُعدّ نسخة أدق، وستظهر هنا تلقائيًا.',
+  improved: 'حسّنّا صورتك.',
+  mayDiffer: 'قد تختلف بعض التفاصيل عن العباءة. قد تعطي صورة أخرى نتيجة أقرب.',
   readyView: 'عرض',
   readyFailedTitle: 'تعذّر إنشاء تجربتك',
   readyFailedBody: (name: string) => `${name}: يُرجى المحاولة مرة أخرى بصورة أخرى.`,
@@ -569,6 +572,25 @@ export const tryOn = {
   photoFormats: 'JPEG أو PNG أو WebP أو HEIC من الآيفون، حتى 10 ميغابايت',
   preparingPhoto: 'جارٍ تجهيز صورتك…',
   photoConvertFailed: 'تعذّر فتح هذه الصورة. يُرجى تجربة صورة أخرى أو صورة بصيغة JPEG.',
+  photoCheck: {
+    needConsent: 'ضعي علامة في المربع أعلاه وسنفحص صورتك فورًا.',
+    checking: 'نفحص صورتك…',
+    good: 'صورة رائعة، جاهزة للتجربة.',
+    title: 'هذه الصورة لا تصلح للتجربة',
+    problems: {
+      sitting: 'أنتِ جالسة في هذه الصورة. يُرجى استخدام صورة وأنتِ واقفة.',
+      cropped: 'جزء منكِ مقطوع من الصورة. نحتاج جسمك كاملًا من الرأس إلى القدمين.',
+      half_body: 'تُظهر هذه الصورة جزءًا منكِ فقط. ابتعدي قليلًا ليظهر جسمك كاملًا من الرأس إلى القدمين.',
+      not_facing: 'نرى ظهرك أو جانبك فقط. يُرجى استخدام صورة وأنتِ تواجهين الكاميرا.',
+      multiple_people: 'في الصورة أكثر من شخص. يُرجى استخدام صورة لكِ وحدك.',
+      no_person: 'لم نجد شخصًا في هذه الصورة. يُرجى استخدام صورة لكِ وأنتِ واقفة.',
+      face_hidden: 'شيء ما يغطي وجهك. يُرجى استخدام صورة لا يوجد فيها شيء أمام وجهك.',
+      too_dark: 'هذه الصورة مظلمة جدًا. يُرجى استخدام صورة بإضاءة جيدة.',
+      blurry: 'هذه الصورة غير واضحة. يُرجى استخدام صورة واضحة.',
+    } as Record<TryOnPhotoProblem, string>,
+    other: 'يُرجى استخدام صورة وأنتِ واقفة تواجهين الكاميرا، وجسمك كاملًا ظاهر، بإضاءة جيدة.',
+    chooseAnother: 'اختاري صورة أخرى',
+  },
   yourPhoto: 'صورتك',
   wearPreview: 'ارتدي نسختي المخصّصة',
   wearPreviewHint: 'تُستخدم معاينتك أعلاه، وإلا فالعباءة من صورنا.',

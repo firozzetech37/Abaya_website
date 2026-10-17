@@ -122,7 +122,7 @@ export default function CustomerPreviewsPage() {
                     )}
                     title={p.checkNotes}
                   >
-                    {p.checkNotes === 'Checked' ? t.checked : p.checkNotes === 'Not checked' ? t.notChecked : p.checkNotes}
+                    {p.checkNotes === 'Checked' ? t.checked : p.checkNotes === 'Not checked' ? t.notChecked : p.checkNotes === 'Checking' ? t.checking : p.checkNotes}
                     {p.retries > 0 ? ` · ${t.remade}` : ''}
                   </p>
                 ) : null}

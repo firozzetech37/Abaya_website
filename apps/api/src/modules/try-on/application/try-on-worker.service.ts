@@ -1,14 +1,18 @@
+import { createHash } from 'node:crypto';
 import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { fixInstruction } from '@abaya/contracts';
 import { APP_CONFIG, type AppConfig } from '../../../common/config/config.module';
 import { UploadsService } from '../../media/application/uploads.service';
 import { WatermarkService } from '../../watermark/application/watermark.service';
 import {
+  CHECKING_NOTE,
   checkQuestion,
+  FAILED_TWICE_NOTE,
   INACCURATE_TRYON_MESSAGE,
   tryOnCheckQuestion,
   CUSTOMER_FASHN_CONCURRENCY,
   customerError,
+  ENDPOINT_MODEL,
   fashnInputs,
   modelTryOnCheckQuestion,
   INACCURATE_MESSAGE,
@@ -20,6 +24,8 @@ import {
   MAX_CHECK_RETRIES,
   POLL_INTERVAL_MS,
   planCredits,
+  remadeSteps,
+  stepCredits,
   TRYON_CHECK_SIDE,
   type PreviewCheck,
   retryDelayMs,
@@ -39,16 +45,25 @@ import {
   type TryOnFiles,
 } from './ports/try-on.ports';
 
-const TICK_MS = 2_000;
+/** The worker looks for work every second while pictures are being made, every 3 s when idle. */
+const TICK_MS = 1_000;
+const IDLE_TICK_MS = 3_000;
 const LEASE_MS = 60_000;
+
+/** Where the picture of a made-up model is kept, by its exact instruction (same height and build, same model). */
+const modelPath = (prompt: string) => `tryon-models/${createHash('sha256').update(prompt).digest('hex').slice(0, 32)}.jpg`;
 
 const mimeOf = (path: string) => (path.endsWith('.png') ? 'image/png' : path.endsWith('.webp') ? 'image/webp' : 'image/jpeg');
 
 /**
  * Sends website previews and try-ons to FASHN, step by step (a preview is colour and fabric
- * first, then the visible details), checks a finished preview against the original photo with
- * Gemini vision, remakes it once when the check fails, saves results to private storage, and
- * deletes try-on photos and results once they expire. Off in tests (they call runOnce).
+ * first, then the visible details), checks each finished picture with Gemini vision, saves results
+ * to private storage, and deletes pictures once they expire. Off in tests (they call runOnce).
+ * - A preview is checked before it is shown (it is shared with other customers), and remade once
+ *   when the check fails.
+ * - A try-on is shown the moment FASHN is done; the check runs after. A serious problem (wrong
+ *   garment, pattern or colour, another face, her own clothes) makes a better one in the background,
+ *   which replaces hers once it passes. She never waits for the check or the remake.
  */
 /** How often AI pictures past their hour are looked for. */
 const SWEEP_EVERY_MS = 60_000;
@@ -57,7 +72,7 @@ const SWEEP_EVERY_MS = 60_000;
 export class TryOnWorker implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TryOnWorker.name);
   private timer?: NodeJS.Timeout;
-  private busy = false;
+  private stopped = false;
   /** When pictures past their hour were last looked for (the sweep runs every minute). */
   private lastSweep = 0;
 
@@ -74,45 +89,54 @@ export class TryOnWorker implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     if (!this.config.TRYON_WORKER_ENABLED) return;
-    this.timer = setInterval(() => void this.tick(), TICK_MS);
-    this.timer.unref();
+    this.schedule(IDLE_TICK_MS);
   }
 
   onModuleDestroy(): void {
-    if (this.timer) clearInterval(this.timer);
+    this.stopped = true;
+    if (this.timer) clearTimeout(this.timer);
   }
 
+  private schedule(ms: number): void {
+    if (this.stopped) return;
+    this.timer = setTimeout(() => void this.tick(), ms);
+    this.timer.unref();
+  }
+
+  /** One round, then the next: soon while pictures are being made, later when there is nothing to do. */
   private async tick(): Promise<void> {
-    if (this.busy) return;
-    this.busy = true;
+    let active = false;
     try {
-      await this.runOnce();
+      active = (await this.runOnce()).active;
     } catch (e) {
       this.logger.error({ err: e }, 'Try-on worker failed');
     } finally {
-      this.busy = false;
+      this.schedule(active ? TICK_MS : IDLE_TICK_MS);
     }
   }
 
-  async runOnce(now = new Date()): Promise<{ submitted: number; finished: number; deleted: number; purged: number }> {
+  async runOnce(now = new Date()): Promise<{ submitted: number; finished: number; deleted: number; purged: number; active: boolean }> {
     const lease = new Date(now.getTime() + LEASE_MS);
     let finished = 0;
-    for (const row of await this.repo.claimDue('RUNNING', now, lease, 20)) {
+    const polled = await this.repo.claimDue('RUNNING', now, lease, 20);
+    for (const row of polled) {
       if (await this.check(row, now)) finished++;
     }
     let submitted = 0;
-    const free = CUSTOMER_FASHN_CONCURRENCY - (await this.repo.countRunning());
+    const running = await this.repo.countRunning();
+    const free = CUSTOMER_FASHN_CONCURRENCY - running;
     for (const row of await this.repo.claimDue('QUEUED', now, lease, free)) {
       if (await this.submit(row, now)) submitted++;
     }
-    const deleted = await this.deleteExpired(now);
+    let deleted = 0;
     let purged = 0;
     // Every minute (and whenever the clock went back, e.g. after a server time correction).
     if (now.getTime() - this.lastSweep >= SWEEP_EVERY_MS || now.getTime() < this.lastSweep) {
       this.lastSweep = now.getTime();
+      deleted = await this.deleteExpired(now);
       purged = await this.purgeExpired(now);
     }
-    return { submitted, finished, deleted, purged };
+    return { submitted, finished, deleted, purged, active: polled.length > 0 || submitted > 0 || running > 0 };
   }
 
   /**
@@ -148,6 +172,11 @@ export class TryOnWorker implements OnModuleInit, OnModuleDestroy {
       ]);
       const prompt = row.steps[row.step] ?? row.prompt;
       const endpoint = row.stepEndpoints[row.step] ?? row.endpoint;
+      // "A model like me": a model of her height and build made before is reused (no wait, no credit).
+      if (endpoint === ENDPOINT_MODEL && (await this.useReadyModel(row, prompt))) {
+        const next = await this.repo.findById(row.id);
+        return next ? this.submit(next, now) : false;
+      }
       const { id } = await this.fashn.run(endpoint, fashnInputs(endpoint, prompt, { source: source!, working, person }));
       await this.repo.markSubmitted(row.id, id, now, new Date(now.getTime() + POLL_INTERVAL_MS));
       return true;
@@ -163,6 +192,16 @@ export class TryOnWorker implements OnModuleInit, OnModuleDestroy {
       this.logger.warn({ id: row.id, err: e instanceof Error ? e.message : e }, 'Could not prepare customer preview');
       return this.fail(row, 'ImageLoadError', now);
     }
+  }
+
+  /** Starts her try-on from a ready-made model of this height and build, if there is one. */
+  private async useReadyModel(row: CustomerPreviewRecord, prompt: string): Promise<boolean> {
+    const model = await this.files.read(modelPath(prompt)).catch(() => null);
+    if (!model) return false;
+    const path = this.uploads.pathFor('CUSTOMER_PREVIEW', 'image/jpeg');
+    await this.files.write(path, model, 'image/jpeg');
+    await this.repo.nextStep(row.id, path, row.step + 1, stepCredits(ENDPOINT_MODEL));
+    return true;
   }
 
   /** True when the request is finished (done or failed). */
@@ -218,6 +257,10 @@ export class TryOnWorker implements OnModuleInit, OnModuleDestroy {
       await this.repo.reschedule(row.id, new Date(now.getTime() + retryDelayMs(1)));
       return false;
     }
+    // A new made-up model: kept, so the next woman of this height and build starts from it.
+    if ((row.stepEndpoints[row.step] ?? row.endpoint) === ENDPOINT_MODEL) {
+      await this.files.write(modelPath(row.steps[row.step] ?? row.prompt), data, 'image/jpeg').catch(() => undefined);
+    }
     // The previous step's picture is no longer needed.
     if (row.workingPath) await this.files.remove([row.workingPath]);
 
@@ -226,7 +269,7 @@ export class TryOnWorker implements OnModuleInit, OnModuleDestroy {
       await this.repo.nextStep(row.id, path, row.step + 1);
       return false;
     }
-    return this.verify(row, path, data, now);
+    return row.kind === 'TRYON' ? this.showThenCheck(row, path, data, now) : this.verify(row, path, data, now);
   }
 
   /**
@@ -235,7 +278,7 @@ export class TryOnWorker implements OnModuleInit, OnModuleDestroy {
    * id (so a copy found online can be traced to it), and a copyright notice. If marking fails the
    * picture is still shown, unmarked, rather than lost.
    */
-  private async finish(row: CustomerPreviewRecord, path: string, data: Buffer, now: Date, notes: string): Promise<void> {
+  private async finish(row: CustomerPreviewRecord, path: string, data: Buffer, now: Date, notes: string, opts: { replaces?: string } = {}): Promise<void> {
     try {
       const kind = row.kind === 'TRYON' ? 'TRYON' : 'PREVIEW';
       const marked = await this.watermark.mark(data, { kind, id: row.id }, { quality: 88, visible: true });
@@ -243,7 +286,52 @@ export class TryOnWorker implements OnModuleInit, OnModuleDestroy {
     } catch (e) {
       this.logger.warn({ id: row.id, err: e instanceof Error ? e.message : e }, 'Could not watermark customer picture');
     }
-    await this.repo.complete(row.id, path, now, notes);
+    if (!opts.replaces) return this.repo.complete(row.id, path, now, notes);
+    // The better version: swapped in for the one she has.
+    await this.repo.replaceResult(row.id, path, notes);
+    await this.files.remove([opts.replaces]);
+  }
+
+  /**
+   * A try-on: shown at once, checked after. A serious problem (a critical check) makes a better one
+   * in the background, which replaces hers when it passes; details are only noted. When the better
+   * one fails too, the first picture stays (marked: some details may differ).
+   */
+  private async showThenCheck(row: CustomerPreviewRecord, path: string, data: Buffer, now: Date): Promise<true> {
+    const checks = (Array.isArray(row.checks) ? row.checks : []) as PreviewCheck[];
+    const ask = () => (checks.length > 0 && this.checker.available ? this.askChecker(row, checks, path, data) : Promise.resolve(null));
+    const shown = row.resultPath;
+    if (shown) {
+      // The better version: checked before it replaces the picture she already has.
+      const answers = await ask();
+      const verdict = answers ? judge(checks, answers, Infinity) : null;
+      if (verdict && !verdict.pass) {
+        await this.files.remove([path]);
+        this.logger.warn({ id: row.id, problems: verdict.problems }, 'Try-on failed the accuracy check twice; the first picture stays');
+        await this.repo.settle(row.id, `${FAILED_TWICE_NOTE}: ${verdict.problems.join(' ')}`);
+        return true;
+      }
+      await this.finish(row, path, data, now, verdict ? checkedNote(verdict.problems) : 'Not checked', { replaces: shown });
+      return true;
+    }
+    // Hers now; then the check.
+    await this.finish(row, path, data, now, CHECKING_NOTE);
+    const answers = await ask();
+    if (!answers) return this.settled(row, 'Not checked');
+    const verdict = judge(checks, answers, Infinity);
+    if (verdict.pass) return this.settled(row, checkedNote(verdict.problems));
+    const notes = verdict.problems.join(' ');
+    if (row.retries >= MAX_CHECK_RETRIES) return this.settled(row, `${FAILED_TWICE_NOTE}: ${notes}`);
+    const endpoints = row.stepEndpoints.length ? row.stepEndpoints : row.steps.map(() => row.endpoint);
+    await this.repo.restart(row.id, remadeSteps(row.steps, row.stepEndpoints, row.endpoint, fixInstruction(verdict.problems)), planCredits(endpoints), `Remade: ${notes}`, {
+      keepResult: true,
+    });
+    return true;
+  }
+
+  private async settled(row: CustomerPreviewRecord, notes: string): Promise<true> {
+    await this.repo.settle(row.id, notes);
+    return true;
   }
 
   /**
@@ -261,7 +349,7 @@ export class TryOnWorker implements OnModuleInit, OnModuleDestroy {
     }
     const verdict = judge(checks, answers);
     if (verdict.pass) {
-      await this.finish(row, path, data, now, verdict.problems.length ? `Checked (minor: ${verdict.problems.join(' ')})` : 'Checked');
+      await this.finish(row, path, data, now, checkedNote(verdict.problems));
       return true;
     }
     await this.files.remove([path]);
@@ -311,6 +399,8 @@ export class TryOnWorker implements OnModuleInit, OnModuleDestroy {
   }
 
   private async fail(row: CustomerPreviewRecord, errorName: string, now: Date): Promise<true> {
+    // The better version of a try-on could not be made: she keeps the one she has.
+    if (row.kind === 'TRYON' && row.resultPath) return this.settled(row, `Not improved (${errorName}): ${row.checkNotes ?? ''}`.trim());
     await this.repo.fail(row.id, customerError(errorName), now);
     return true;
   }
@@ -325,3 +415,6 @@ export class TryOnWorker implements OnModuleInit, OnModuleDestroy {
     return rows.length;
   }
 }
+
+/** "Checked", or "Checked (minor: …)" with the details the check noted. */
+const checkedNote = (problems: string[]) => (problems.length ? `Checked (minor: ${problems.join(' ')})` : 'Checked');

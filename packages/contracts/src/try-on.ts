@@ -41,6 +41,39 @@ export type CreateCustomerPreviewBody = z.infer<typeof createCustomerPreviewBody
 /** POST /v1/me/try-on/uploads: where to PUT her photo (private bucket). */
 export const tryOnUploadBody = z.object({ contentType: z.enum(['image/jpeg', 'image/png', 'image/webp']) });
 
+/** Why her photo will not work for a try-on (the first problem found). */
+export const TRYON_PHOTO_PROBLEMS = [
+  'sitting',
+  'cropped',
+  'half_body',
+  'not_facing',
+  'multiple_people',
+  'no_person',
+  'face_hidden',
+  'too_dark',
+  'blurry',
+] as const;
+export type TryOnPhotoProblem = (typeof TRYON_PHOTO_PROBLEMS)[number];
+
+/**
+ * POST /v1/me/try-on/photo-check: her uploaded photo, checked the moment she picks it (after she
+ * agreed to the photo terms), before any FASHN credit is spent.
+ */
+export const checkTryOnPhotoBody = z.object({
+  personPath: z.string().min(1).max(300),
+  consent: z.literal(true),
+});
+export type CheckTryOnPhotoBody = z.infer<typeof checkTryOnPhotoBody>;
+
+export interface TryOnPhotoCheckDto {
+  /** False: the photo was deleted; she should choose another. */
+  ok: boolean;
+  /** False when the check could not run (the photo is then allowed). */
+  checked: boolean;
+  /** What is wrong, when `ok` is false; null for "something else". */
+  problem: TryOnPhotoProblem | null;
+}
+
 /** POST /v1/me/try-on/try-ons */
 /**
  * "Try it on" works two ways: on her own photo, or on a model with her build ("a model like
@@ -123,6 +156,15 @@ export interface CustomerPreviewDto {
   leftOut: string[];
   /** A try-on of her customised version (made on her AI preview), not the abaya as photographed. */
   customised: boolean;
+  /**
+   * Try-ons are shown before their accuracy check. True while a more accurate version is being made
+   * in the background (`status` is DONE and `imageUrl` the picture she has; it is swapped in when ready).
+   */
+  improving: boolean;
+  /** The picture shown is that more accurate version. */
+  improved: boolean;
+  /** The more accurate version failed too: some details may differ from the abaya. */
+  mayDiffer: boolean;
 }
 
 export interface CustomerAiLimitsDto {

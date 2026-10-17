@@ -2,6 +2,7 @@ import { Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post } 
 import { Throttle } from '@nestjs/throttler';
 import {
   type AdminCustomerPreviewDto,
+  checkTryOnPhotoBody,
   adminCustomerPreviewsQuery,
   type AdminCustomerPreviewSummaryDto,
   createCustomerPreviewBody,
@@ -13,6 +14,7 @@ import {
   type Paginated,
   recentAiPicturesQuery,
   type RecentAiPicturesDto,
+  type TryOnPhotoCheckDto,
   tryOnUploadBody,
   type UploadUrlResponse,
 } from '@abaya/contracts';
@@ -47,6 +49,14 @@ export class MyTryOnController {
   @Post('uploads')
   upload(@CurrentActor() actor: Actor, @ZodBody(tryOnUploadBody) body: z.infer<typeof tryOnUploadBody>): Promise<UploadUrlResponse> {
     return this.tryOn.uploadUrl(actor, body.contentType);
+  }
+
+  /** Her photo, checked the moment she picks it: standing, whole body, facing the camera. */
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('photo-check')
+  @HttpCode(200)
+  photoCheck(@ZodBody(checkTryOnPhotoBody) body: z.infer<typeof checkTryOnPhotoBody>): Promise<TryOnPhotoCheckDto> {
+    return this.tryOn.checkPhoto(body);
   }
 
   @Throttle({ default: { limit: 10, ttl: 60_000 } })

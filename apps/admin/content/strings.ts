@@ -769,6 +769,7 @@ export const strings = {
     modelTryOn: 'Try-on · a model like me',
     checked: '✓ Accuracy checked',
     notChecked: 'Not checked (no Gemini answer)',
+    checking: 'Shown to the customer; accuracy check running',
     remade: 'remade once',
     making: 'Being made',
     hide: 'Hide',

@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { changesToShow, checkQuestion, choiceLines, customerError, fashnInputs, judge, previewPlan, sourceImage, startOfIndiaDay, type SubjectOption, tryOnPlan } from './try-on.rules';
+import {
+  changesToShow,
+  checkQuestion,
+  choiceLines,
+  customerError,
+  fashnInputs,
+  judge,
+  modelHeight,
+  previewPlan,
+  remadeSteps,
+  sourceImage,
+  startOfIndiaDay,
+  type SubjectOption,
+  tryOnPlan,
+} from './try-on.rules';
 
 const options: SubjectOption[] = [
   { id: 'nida', groupCode: 'FABRIC', name: 'Nida', description: null, isDefault: true },
@@ -69,6 +83,20 @@ describe('website AI preview rules', () => {
     expect(judge(checks, [ok, ok, { ok: false, problem: 'a' }, { ok: false, problem: 'b' }]).pass).toBe(false);
     expect(checkQuestion(checks)).toContain('4. Sleeves bell.');
   });
+
+  it('remakes a try-on only for a serious problem: details are noted, never remade', () => {
+    const checks = [
+      { text: 'Same face.', critical: true },
+      { text: 'Same pattern.', critical: true },
+      { text: 'Every panel in place.', critical: false },
+      { text: 'Full length.', critical: false },
+    ];
+    const ok = { ok: true, problem: '' };
+    const off = { ok: false, problem: 'off' };
+    expect(judge(checks, [ok, ok, off, off], Infinity)).toEqual({ pass: true, problems: ['Every panel in place: off.', 'Full length: off.'] });
+    expect(judge(checks, [ok, off, ok, ok], Infinity).pass).toBe(false);
+    expect(judge(checks, [off, ok, ok, ok], Infinity).pass).toBe(false);
+  });
 });
 
 describe('try-on plans', () => {
@@ -87,9 +115,21 @@ describe('try-on plans', () => {
   it('makes a model with her build, then dresses that model (no photo of her)', () => {
     const plan = tryOnPlan('CLOSED', { mode: 'MODEL', body: { heightCm: 168, weightKg: 85 } });
     expect(plan.endpoints).toEqual(['model-create', 'tryon-max']);
-    expect(plan.steps[0]).toContain('about 168 cm tall');
+    // Her height to the nearest 5 cm: the same ready-made model serves every woman of that height and build.
+    expect(plan.steps[0]).toContain('about 170 cm tall');
+    expect(tryOnPlan('CLOSED', { mode: 'MODEL', body: { heightCm: 171, weightKg: 85 } }).steps[0]).toBe(plan.steps[0]);
+    expect([modelHeight(157), modelHeight(158), modelHeight(162), modelHeight(163)]).toEqual([155, 160, 160, 165]);
     expect(plan.steps.join(' ')).not.toMatch(/\b85\b/);
     expect(plan.checks.some((c) => c.text.includes('same person'))).toBe(false);
     expect(() => tryOnPlan('CLOSED', { mode: 'MODEL' })).toThrow();
+  });
+
+  it('remakes with the problems named, but never changes the model step (it is reused)', () => {
+    expect(remadeSteps(['make a model', 'dress her', 'new background'], ['model-create', 'tryon-max', 'edit'], 'tryon-max', 'FIX.')).toEqual([
+      'make a model',
+      'dress her FIX.',
+      'new background FIX.',
+    ]);
+    expect(remadeSteps(['dress her'], [], 'tryon-max', 'FIX.')).toEqual(['dress her FIX.']);
   });
 });

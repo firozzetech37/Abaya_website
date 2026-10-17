@@ -2,12 +2,18 @@ import { Logger } from '@nestjs/common';
 import sharp from 'sharp';
 import type { PreviewChecker } from '../application/ports/try-on.ports';
 
-const TIMEOUT_MS = 30_000;
+/**
+ * How long a customer may wait for Gemini: the photo check and the background wording are asked
+ * while she waits, so at most 10 s. The accuracy check runs after she already has her try-on, so it
+ * may take a little longer.
+ */
+const QUICK_TIMEOUT_MS = 10_000;
+const CHECK_TIMEOUT_MS = 20_000;
 /** After "quota used up" (429) Gemini says when to come back; we wait that long, at most an hour, at least 30 s. */
 const MAX_PAUSE_MS = 60 * 60_000;
 const MIN_PAUSE_MS = 30_000;
-/** "Overloaded" (503): a short pause. */
-const BUSY_PAUSE_MS = 30_000;
+/** "Overloaded" (503) or no answer in time: skip Gemini for a while instead of making every customer wait again. */
+export const BUSY_PAUSE_MS = 10 * 60_000;
 
 /** `"retryDelay": "69000s"` (or the message's "retry in 19h10m0.1s") → milliseconds; null when absent. */
 export function retryDelayMs(body: string): number | null {
@@ -57,12 +63,13 @@ export class GeminiPreviewChecker implements PreviewChecker {
         ...sized.flatMap((img) => [{ text: `${img.label}:` }, { inlineData: { mimeType: img.mimeType, data: img.data.toString('base64') } }]),
       ],
       800,
+      CHECK_TIMEOUT_MS,
     );
     return text === null ? null : parseAnswers(text, count);
   }
 
   async classifyRequest(question: string) {
-    const text = await this.ask([{ text: question }], 300);
+    const text = await this.ask([{ text: question }], 300, QUICK_TIMEOUT_MS);
     return text === null ? null : parseRequestVerdict(text);
   }
 
@@ -70,7 +77,7 @@ export class GeminiPreviewChecker implements PreviewChecker {
   async assessPhoto(photo: { data: Buffer; mimeType: string }, question: string) {
     if (this.paused()) return null;
     const small = await shrink(photo.data, photo.mimeType, PHOTO_CHECK_SIDE);
-    const text = await this.ask([{ text: question }, { inlineData: { mimeType: small.mimeType, data: small.data.toString('base64') } }], 100);
+    const text = await this.ask([{ text: question }, { inlineData: { mimeType: small.mimeType, data: small.data.toString('base64') } }], 100, QUICK_TIMEOUT_MS);
     return text === null ? null : parsePhotoVerdict(text);
   }
 
@@ -78,7 +85,7 @@ export class GeminiPreviewChecker implements PreviewChecker {
     return now < this.pausedUntil;
   }
 
-  private async ask(parts: unknown[], maxOutputTokens: number): Promise<string | null> {
+  private async ask(parts: unknown[], maxOutputTokens: number, timeoutMs: number): Promise<string | null> {
     if (this.paused()) return null;
     try {
       const res = await fetch(
@@ -92,7 +99,7 @@ export class GeminiPreviewChecker implements PreviewChecker {
             // output budget on its reasoning and return a cut-off answer.
             generationConfig: { temperature: 0, responseMimeType: 'application/json', maxOutputTokens, thinkingConfig: { thinkingBudget: 0 } },
           }),
-          signal: AbortSignal.timeout(TIMEOUT_MS),
+          signal: AbortSignal.timeout(timeoutMs),
         },
       );
       if (!res.ok) {
@@ -105,7 +112,12 @@ export class GeminiPreviewChecker implements PreviewChecker {
       }
       const body = (await res.json()) as GeminiResponse;
       return body.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? null;
-    } catch {
+    } catch (e) {
+      // No answer in time: Gemini is struggling, so stop asking for a while.
+      if (e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')) {
+        this.pausedUntil = Date.now() + BUSY_PAUSE_MS;
+        this.logger.warn(`Gemini did not answer within ${Math.round(timeoutMs / 1000)} s; checks are skipped for ${BUSY_PAUSE_MS / 60_000} min`);
+      }
       return null;
     }
   }

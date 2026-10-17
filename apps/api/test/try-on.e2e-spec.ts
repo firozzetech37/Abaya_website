@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import { TryOnWorker } from '../src/modules/try-on/application/try-on-worker.service';
 import { createTestApp, type TestContext, type TestUser, userWithRoles } from './helpers';
 
 /** A real (tiny) JPEG with GPS-like metadata, like a phone photo. */
@@ -244,7 +245,7 @@ describe('Website AI preview and try-on (e2e)', () => {
     ctx.checker.photoVerdict = { ok: false, reason: 'not_full_body' };
     const halfBody = await upload();
     const refused = await ctx.http.post('/v1/me/try-on/try-ons').set(eva.auth).send({ designId, personPath: halfBody, consent: true }).expect(422);
-    expect(refused.body.error).toMatchObject({ code: 'PHOTO_NOT_SUITABLE', message: expect.stringContaining('whole body is visible') });
+    expect(refused.body.error).toMatchObject({ code: 'PHOTO_NOT_SUITABLE', message: expect.stringContaining('whole body fits') });
     expect(ctx.storage.files.has(`private/${halfBody}`)).toBe(false);
     expect(ctx.fashn.runs).toHaveLength(runsBefore);
     expect((await ctx.http.get('/v1/me/try-on/limits').set(eva.auth).expect(200)).body.tryOnsLeft).toBe(20);
@@ -261,13 +262,27 @@ describe('Website AI preview and try-on (e2e)', () => {
       .send({ designId, personPath: good, previewId: shared.body.id, consent: true })
       .expect(201);
     expect((await sharp(ctx.storage.files.get(`private/${good}`)!.body).metadata()).exif).toBeUndefined();
-    await ctx.runTryOn();
+    // FASHN is done: she has her try-on at once, before the check. The check finds a serious problem,
+    // so a better one is made in the background while she looks at the first.
+    const worker = ctx.app.get(TryOnWorker);
+    const t = Date.now();
+    await worker.runOnce(new Date(t + 1_000));
+    await worker.runOnce(new Date(t + 3_000));
+    const first = await ctx.http.get(`/v1/me/try-on/${made.body.id}`).set(eva.auth).expect(200);
+    expect(first.body).toMatchObject({ status: 'DONE', imageUrl: expect.any(String), improving: true, improved: false, mayDiffer: false });
+    const firstPath = (await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: made.body.id } })).resultPath!;
+    // A few seconds later the better one is ready (stepped in seconds: FASHN jobs time out after 5 minutes).
+    for (let s = 5; s <= 15; s += 2) await worker.runOnce(new Date(t + s * 1_000));
     const row = await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: made.body.id } });
-    // A balanced try-on costs 2 credits; remade once: 4.
+    // A balanced try-on costs 2 credits; remade once: 4. The better one replaced hers.
     expect(row).toMatchObject({ status: 'DONE', retries: 1, credits: 4, checkNotes: 'Checked' });
+    expect(row.resultPath).not.toBe(firstPath);
+    expect(ctx.storage.files.has(`private/${firstPath}`)).toBe(false);
     expect(ctx.fashn.runs.at(-1)!.inputs.prompt).toContain('the previous attempt was wrong');
+    const better = await ctx.http.get(`/v1/me/try-on/${made.body.id}`).set(eva.auth).expect(200);
+    expect(better.body).toMatchObject({ status: 'DONE', imageUrl: expect.any(String), improving: false, improved: true, mayDiffer: false });
 
-    // Wrong twice: an honest message, and it does not use one of her 3 try-ons.
+    // Wrong twice: she keeps the first picture, told that some details may differ.
     ctx.checker.failNext = 2;
     const again = await ctx.http
       .post('/v1/me/try-on/try-ons')
@@ -275,9 +290,47 @@ describe('Website AI preview and try-on (e2e)', () => {
       .send({ designId, personPath: good, previewId: shared.body.id, consent: true })
       .expect(201);
     await ctx.runTryOn();
-    const failed = await ctx.http.get(`/v1/me/try-on/${again.body.id}`).set(eva.auth).expect(200);
-    expect(failed.body).toMatchObject({ status: 'FAILED', imageUrl: null, error: expect.stringContaining('try a different photo') });
-    expect((await ctx.http.get('/v1/me/try-on/limits').set(eva.auth).expect(200)).body.tryOnsLeft).toBe(19);
+    const kept = await ctx.http.get(`/v1/me/try-on/${again.body.id}`).set(eva.auth).expect(200);
+    expect(kept.body).toMatchObject({ status: 'DONE', imageUrl: expect.any(String), error: null, improving: false, improved: false, mayDiffer: true });
+    expect((await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: again.body.id } })).checkNotes).toMatch(/^Failed twice: /);
+    expect((await ctx.http.get('/v1/me/try-on/limits').set(eva.auth).expect(200)).body.tryOnsLeft).toBe(18);
+  });
+
+  it('checks her photo the moment she picks it: a sitting photo is refused with the reason, a good one is not checked again', async () => {
+    const ida = await userWithRoles(ctx, ['CUSTOMER'], 'tryon-ida');
+    const as = { ...ida.auth, 'X-Forwarded-For': '203.0.113.31' };
+    const upload = async () => {
+      const res = await ctx.http.post('/v1/me/try-on/uploads').set(as).send({ contentType: 'image/jpeg' }).expect(201);
+      await ctx.storage.put('private', res.body.storagePath, await herPhoto(), 'image/jpeg');
+      return res.body.storagePath as string;
+    };
+    const runsBefore = ctx.fashn.runs.length;
+
+    // Sitting: refused with the reason, deleted at once, nothing spent.
+    ctx.checker.photoVerdict = { ok: false, reason: 'sitting' };
+    const sitting = await upload();
+    const bad = await ctx.http.post('/v1/me/try-on/photo-check').set(as).send({ personPath: sitting, consent: true }).expect(200);
+    expect(bad.body).toEqual({ ok: false, checked: true, problem: 'sitting' });
+    expect(ctx.storage.files.has(`private/${sitting}`)).toBe(false);
+    // An older answer is still understood; an unknown one is "something else".
+    ctx.checker.photoVerdict = { ok: false, reason: 'not_full_body' };
+    expect((await ctx.http.post('/v1/me/try-on/photo-check').set(as).send({ personPath: await upload(), consent: true }).expect(200)).body.problem).toBe('half_body');
+    ctx.checker.photoVerdict = { ok: false, reason: 'weird' };
+    expect((await ctx.http.post('/v1/me/try-on/photo-check').set(as).send({ personPath: await upload(), consent: true }).expect(200)).body.problem).toBeNull();
+    // Without her agreement, or a path that is not a try-on photo: refused.
+    await ctx.http.post('/v1/me/try-on/photo-check').set(as).send({ personPath: await upload() }).expect(400);
+    await ctx.http.post('/v1/me/try-on/photo-check').set(as).send({ personPath: 'design-images/2026/01/00000000-0000-4000-8000-000000000000.jpg', consent: true }).expect(422);
+
+    // A good photo passes; "Try it on" then trusts the check (Gemini is not asked again).
+    ctx.checker.photoVerdict = { ok: true, reason: 'ok' };
+    const good = await upload();
+    expect((await ctx.http.post('/v1/me/try-on/photo-check').set(as).send({ personPath: good, consent: true }).expect(200)).body).toEqual({ ok: true, checked: true, problem: null });
+    ctx.checker.photoVerdict = { ok: false, reason: 'sitting' };
+    await ctx.http.post('/v1/me/try-on/try-ons').set(as).send({ designId, personPath: good, consent: true }).expect(201);
+    ctx.checker.photoVerdict = { ok: true, reason: 'ok' };
+    expect(ctx.fashn.runs.length).toBe(runsBefore);
+    await ctx.runTryOn();
+    expect(ctx.fashn.runs.length).toBeGreaterThan(runsBefore);
   });
 
   it('tries the abaya on a model with her build, and on her photo made to her measurements', async () => {
@@ -295,7 +348,7 @@ describe('Website AI preview and try-on (e2e)', () => {
     await ctx.runTryOn();
     const [create, dress] = ctx.fashn.runs.slice(runsBefore);
     expect(create).toMatchObject({ endpoint: 'model-create' });
-    expect(create!.inputs.prompt).toContain('about 158 cm tall');
+    expect(create!.inputs.prompt).toContain('about 160 cm tall');
     expect(create!.inputs.prompt).toContain('a full, curvy build');
     expect(dress).toMatchObject({ endpoint: 'tryon-max' });
     // The model the first step made wears the abaya.
@@ -308,6 +361,19 @@ describe('Website AI preview and try-on (e2e)', () => {
     expect(row).toMatchObject({ credits: 3, personPath: null, stepEndpoints: ['model-create', 'tryon-max'], choices: ['Try-on: a model like me'] });
     // Her weight is never written down.
     expect(JSON.stringify(row)).not.toMatch(/\b66\b/);
+
+    // Another woman of the same height (to 5 cm) and build: the ready-made model is reused, so only
+    // the try-on runs (no model step to wait for, and 1 credit less).
+    const gul = await userWithRoles(ctx, ['CUSTOMER'], 'tryon-gul');
+    const runsReady = ctx.fashn.runs.length;
+    const twin = await ctx.http
+      .post('/v1/me/try-on/try-ons')
+      .set({ ...gul.auth, 'X-Forwarded-For': '203.0.113.22' })
+      .send({ designId, mode: 'MODEL', body: { heightCm: 161, weightKg: 66, waistCm: 74, hipCm: 98 }, consent: true })
+      .expect(201);
+    await ctx.runTryOn();
+    expect(ctx.fashn.runs.slice(runsReady).map((r) => r.endpoint)).toEqual(['tryon-max']);
+    expect(await ctx.db.customerPreview.findUniqueOrThrow({ where: { id: twin.body.id } })).toMatchObject({ status: 'DONE', credits: 2 });
 
     // Her photo, made to her measurements: try-on, then the length and sleeves.
     const upload = await ctx.http.post('/v1/me/try-on/uploads').set(as).send({ contentType: 'image/jpeg' }).expect(201);

@@ -15,11 +15,14 @@ import {
   type TryOnBody,
   type TryOnMode,
   TRYON_RETENTION_DAYS,
+  TRYON_PHOTO_PROBLEMS,
+  type TryOnPhotoProblem,
 } from '@abaya/contracts';
 
 /** At most this many customer requests run at FASHN at once (the designers' AI Catalog shares the account). */
 export const CUSTOMER_FASHN_CONCURRENCY = 3;
-export const POLL_INTERVAL_MS = 3_000;
+/** How often FASHN is asked whether a picture is ready (it takes 20–80 s). */
+export const POLL_INTERVAL_MS = 1_500;
 export const JOB_TIMEOUT_MS = 5 * 60_000;
 export const MAX_ATTEMPTS = 3;
 export const INPUT_URL_TTL_SECONDS = 3_600;
@@ -63,7 +66,7 @@ export function tryOnPlan(
     endpoints: [...plan.endpoints, ENDPOINT_EDIT],
     checks: [
       // Her own photo's background is no longer expected...
-      ...plan.checks.map((c) => ({ ...c, text: c.text.replace(', pose and background', ' and pose') })),
+      ...plan.checks.map((c) => ({ ...c, text: c.text.replace(' pose and background ', ' pose ') })),
       // ...the chosen one is.
       { text: `The background of ${resultImage} shows ${background}.`, critical: false },
     ],
@@ -130,9 +133,15 @@ function basePlan(style: string, options: { mode?: TryOnMode; body?: TryOnBody |
       'Keep her pose, head position, hands and the background exactly as in her photo.',
       'It must look like a real photograph of her: natural drape and folds that follow her body, real fabric texture.',
     ].join(' ');
+  // Critical (a remake): the wrong garment, pattern or colour, or another woman's face. Everything
+  // else is a detail: noted for the admin, never a remake (each remake costs her another minute).
   const garmentChecks = (result: string, original: string): PreviewCheck[] => [
     { text: `The abaya in ${result} has the same ${shape} silhouette as the abaya in ${original}.`, critical: true },
-    { text: `Every embroidery panel, border or motif of the abaya in ${original} is visible on the abaya in ${result}, in the same place and size.`, critical: true },
+    {
+      text: `The abaya in ${result} has the same kind of pattern or embroidery as in ${original}: not plain where ${original} is patterned, not a different design, and no buttons, prints or motifs that ${original} does not have.`,
+      critical: true,
+    },
+    { text: `Every embroidery panel, border or motif of the abaya in ${original} is visible on the abaya in ${result}, in the same place and size.`, critical: false },
     { text: `The abaya in ${result} is the same colour as in ${original}.`, critical: true },
     { text: `The abaya in ${result} is full length, reaching her ankles.`, critical: false },
     { text: `She is not holding or wearing the product model’s handbag or shoes from ${original}.`, critical: false },
@@ -142,7 +151,8 @@ function basePlan(style: string, options: { mode?: TryOnMode; body?: TryOnBody |
     if (!body) throw new Error('A model try-on needs her measurements.');
     const { height, build } = bodyBuild(body);
     return {
-      steps: [modelLikeMePrompt(body), dress('the woman in the photo')],
+      // Her height to the nearest 5 cm: women of the same height and build share one ready-made model.
+      steps: [modelLikeMePrompt({ ...body, heightCm: modelHeight(body.heightCm) }), dress('the woman in the photo')],
       endpoints: [ENDPOINT_MODEL, ENDPOINT.TRYON],
       checks: [
         ...garmentChecks('image 2', 'image 1'),
@@ -151,9 +161,10 @@ function basePlan(style: string, options: { mode?: TryOnMode; body?: TryOnBody |
     };
   }
   const checks: PreviewCheck[] = [
-    { text: 'The woman in image 3 is clearly the same person as in image 2: same face, skin tone, body shape, pose and background.', critical: true },
+    { text: 'The woman in image 3 is clearly the same person as in image 2: the same face and skin tone.', critical: true },
+    { text: 'The woman in image 3 has the same pose and background as in image 2.', critical: false },
     { text: 'None of her own clothes from image 2 (a shawl, dupatta or scarf over her shoulders, her top or jacket) are visible in image 3: only the abaya, its inner dress and a hijab.', critical: true },
-    { text: 'The woman in image 3 has the same body shape, size and proportions as in image 2 (not slimmed, stretched or reshaped), and the abaya is fitted to her body: its shoulders on her shoulders, the hem at her ankles, the sleeves at her wrists.', critical: true },
+    { text: 'The woman in image 3 has the same body shape, size and proportions as in image 2 (not slimmed, stretched or reshaped), and the abaya is fitted to her body: its shoulders on her shoulders, the hem at her ankles, the sleeves at her wrists.', critical: false },
     ...garmentChecks('image 3', 'image 1'),
   ];
   if (!body) return { steps: [dress('the woman in her photo')], endpoints: [ENDPOINT.TRYON], checks };
@@ -164,8 +175,20 @@ function basePlan(style: string, options: { mode?: TryOnMode; body?: TryOnBody |
   };
 }
 
-const ENDPOINT_MODEL = 'model-create';
+/** FASHN's "create a model" step ("a model like me"); its picture is kept and reused (TryOnWorker). */
+export const ENDPOINT_MODEL = 'model-create';
 const ENDPOINT_EDIT = 'edit';
+
+/** Height of the made-up model: hers to the nearest 5 cm, so the ready-made models are reused. */
+export const modelHeight = (heightCm: number): number => Math.round(heightCm / 5) * 5;
+
+/**
+ * The steps of a remake: the problems the check found go into every step that dresses or edits
+ * her, never into the model step (the same model is reused, ready-made).
+ */
+export function remadeSteps(steps: string[], endpoints: string[], defaultEndpoint: string, fix: string): string[] {
+  return steps.map((s, i) => ((endpoints[i] ?? defaultEndpoint) === ENDPOINT_MODEL ? s : `${s} ${fix}`));
+}
 
 /** Kept for rows made before the try-on plan (one instruction). */
 export const TRYON_PROMPT = tryOnPlan('abaya').steps[0]!;
@@ -263,6 +286,11 @@ export const INACCURATE_TRYON_MESSAGE =
 export const INACCURATE_MESSAGE =
   'We couldn’t make an accurate preview of this combination. Your abaya will still be made exactly to your choices.';
 
+/** A try-on shown before its accuracy check (its `checkNotes` until the check answers). */
+export const CHECKING_NOTE = 'Checking';
+/** A try-on whose better version failed the check too: the first picture stays (details may differ). */
+export const FAILED_TWICE_NOTE = 'Failed twice';
+
 export type PreviewCheck = { text: string; critical: boolean };
 export type CheckAnswer = { ok: boolean; problem: string };
 
@@ -278,16 +306,17 @@ export function checkQuestion(checks: PreviewCheck[]): string {
 }
 
 /**
- * Pass when every critical check is true (silhouette, embroidery, colour) and at most one
- * detail is off. Missing answers count as passed (the checker could not tell).
+ * Pass when every critical check is true and at most `maxMinor` details are off (a preview: one,
+ * since its details are her chosen options; a try-on: any, since only serious problems are worth
+ * another minute of her waiting). Missing answers count as passed (the checker could not tell).
  */
-export function judge(checks: PreviewCheck[], answers: CheckAnswer[]): { pass: boolean; problems: string[] } {
+export function judge(checks: PreviewCheck[], answers: CheckAnswer[], maxMinor = 1): { pass: boolean; problems: string[] } {
   const failed = checks
     .map((c, i) => ({ check: c, answer: answers[i] }))
     .filter((x) => x.answer && !x.answer.ok);
   const problems = failed.map((x) => `${x.check.text.replace(/\.$/, '')}: ${x.answer!.problem || 'not shown'}.`);
   const criticalFailed = failed.some((x) => x.check.critical);
-  return { pass: !criticalFailed && failed.length <= 1, problems };
+  return { pass: !criticalFailed && failed.filter((x) => !x.check.critical).length <= maxMinor, problems };
 }
 
 /** "Fabric: Crepe" lines for the admin list. */
@@ -372,29 +401,54 @@ export function tryOnCheckQuestion(checks: PreviewCheck[]): string {
 
 // ───────────── Her photo, checked before any credit is spent ─────────────
 
-export const PHOTO_REASONS = ['ok', 'not_full_body', 'multiple_people', 'not_standing', 'too_dark', 'no_person', 'face_hidden'] as const;
-export type PhotoReason = (typeof PHOTO_REASONS)[number];
-
+/**
+ * Strict on purpose: a try-on on a sitting, cropped or half-body photo cannot come out right, and
+ * would otherwise cost two FASHN runs and minutes of waiting before it fails.
+ */
 export const PHOTO_QUESTION = [
-  'You check a customer photo for a virtual clothing try-on. A good photo shows exactly one woman, standing, facing the camera, with her body visible at least from head to knees (ideally to the feet), in reasonable light.',
-  `Answer with JSON only: {"ok":true|false,"reason":"${PHOTO_REASONS.join('|')}"}. Use "ok" only when the photo is suitable. A headscarf or hijab is fine.`,
+  'You check a customer photo before a virtual try-on of a full-length abaya. Be strict: the try-on only works when ALL of these are true.',
+  [
+    '1. Exactly one person is in the photo.',
+    '2. She is standing upright: not sitting, kneeling, crouching, lying down or leaning on something.',
+    '3. Her whole body is in the frame, from the top of her head down to her feet; nothing is cut off at the top or the bottom.',
+    '4. She faces the camera (straight on or slightly turned), not her back or a full side view.',
+    '5. Her face is not blocked by a phone, hand or object. A hijab, niqab or face veil is fine.',
+    '6. The photo is reasonably lit and sharp. A mirror selfie is fine if all of the above are true.',
+  ].join('\n'),
+  `Answer with JSON only: {"ok":true|false,"reason":"${['ok', ...TRYON_PHOTO_PROBLEMS].join('|')}"} giving the FIRST problem you see.`,
+  'Reasons: "sitting" = not standing upright; "cropped" = a full-length photo with her head or feet cut off; "half_body" = only her upper body, or down to her waist or knees; "not_facing" = her back or side to the camera; "multiple_people" = more than one person; "no_person" = no person; "face_hidden" = face blocked by an object; "too_dark"; "blurry".',
 ].join('\n\n');
+
+/** Her photo check's answer as a problem code; null for an answer we do not know. */
+export function photoProblem(reason: string): TryOnPhotoProblem | null {
+  if ((TRYON_PHOTO_PROBLEMS as readonly string[]).includes(reason)) return reason as TryOnPhotoProblem;
+  // Older answers.
+  if (reason === 'not_full_body') return 'half_body';
+  if (reason === 'not_standing') return 'sitting';
+  return null;
+}
 
 /** What she is told when her photo will not work (no credit is used). */
 export function photoTip(reason: string): string {
-  switch (reason) {
-    case 'not_full_body':
-      return 'Please use a photo where your whole body is visible, at least from head to knees.';
+  switch (photoProblem(reason)) {
+    case 'sitting':
+      return 'You are sitting in this photo. Please use one where you are standing.';
+    case 'cropped':
+      return 'Part of you is cut off in this photo. Please use one that shows you from head to feet.';
+    case 'half_body':
+      return 'This photo shows only part of you. Please step back so your whole body fits, from head to feet.';
+    case 'not_facing':
+      return 'Please use a photo where you face the camera.';
     case 'multiple_people':
       return 'Please use a photo with only you in it.';
-    case 'not_standing':
-      return 'Please use a photo where you are standing straight and facing the camera.';
-    case 'too_dark':
-      return 'This photo is too dark. Please use one taken in good light.';
-    case 'face_hidden':
-      return 'Please use a photo where your face is visible and facing the camera.';
     case 'no_person':
       return 'We could not find a person in this photo. Please use a photo of yourself, standing.';
+    case 'face_hidden':
+      return 'Your face is covered by something in this photo. Please use one where nothing is in front of your face.';
+    case 'too_dark':
+      return 'This photo is too dark. Please use one taken in good light.';
+    case 'blurry':
+      return 'This photo is blurry. Please use a sharp one.';
     default:
       return 'This photo will not work well for a try-on. Please use one where you stand facing the camera, whole body visible, in good light.';
   }

@@ -72,11 +72,18 @@ export interface CustomerPreviewRepository {
   countRunning(): Promise<number>;
   markSubmitted(id: string, providerJobId: string, now: Date, nextCheckAt: Date): Promise<void>;
   reschedule(id: string, nextCheckAt: Date, opts?: { requeue?: boolean; countAttempt?: boolean; error?: string }): Promise<void>;
-  /** Step done: the next step starts from its result. */
-  nextStep(id: string, workingPath: string, step: number): Promise<void>;
-  /** The check failed: start again from the first step with these prompts (credits added). */
-  restart(id: string, steps: string[], credits: number, checkNotes: string): Promise<void>;
+  /** Step done: the next step starts from its result. `refund`: credits not spent after all (a ready-made model). */
+  nextStep(id: string, workingPath: string, step: number, refund?: number): Promise<void>;
+  /**
+   * The check failed: start again from the first step with these prompts (credits added).
+   * `keepResult`: a try-on she already has stays shown until the better one replaces it.
+   */
+  restart(id: string, steps: string[], credits: number, checkNotes: string, opts?: { keepResult?: boolean }): Promise<void>;
   complete(id: string, resultPath: string, now: Date, checkNotes?: string): Promise<void>;
+  /** The better version replaces the picture she has (`finishedAt`, when she first got one, stays). */
+  replaceResult(id: string, resultPath: string, checkNotes: string): Promise<void>;
+  /** The picture she has is final, with these notes (the check's verdict, or why it was not improved). */
+  settle(id: string, checkNotes: string): Promise<void>;
   /** Failed the check twice: no picture, and the combination is remembered as not possible. */
   failInaccurate(id: string, error: string, checkNotes: string, now: Date): Promise<void>;
   fail(id: string, error: string, now: Date): Promise<void>;

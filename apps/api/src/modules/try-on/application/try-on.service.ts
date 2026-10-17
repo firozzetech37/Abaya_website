@@ -3,6 +3,7 @@ import {
   type AdminCustomerPreviewDto,
   type AdminCustomerPreviewSummaryDto,
   type CreateCustomerPreviewBody,
+  type CheckTryOnPhotoBody,
   type CreateTryOnBody,
   CUSTOMER_PREVIEW_CREDITS,
   type CustomerAiLimitsDto,
@@ -14,6 +15,7 @@ import {
   type RecentAiPicturesDto,
   previewKey,
   type UploadUrlResponse,
+  type TryOnPhotoCheckDto,
 } from '@abaya/contracts';
 import { APP_CONFIG, type AppConfig } from '../../../common/config/config.module';
 import type { Actor } from '../../../common/auth/auth.types';
@@ -27,6 +29,7 @@ import {
   INACCURATE_MESSAGE,
   INACCURATE_TRYON_MESSAGE,
   PHOTO_QUESTION,
+  photoProblem,
   BACKGROUND_NOT_ALLOWED,
   BACKGROUND_SCENES,
   backgroundQuestion,
@@ -44,6 +47,7 @@ import {
   MODEL_TRYON_LINE,
   WORDS_LINE,
   LEFT_OUT_LINE,
+  FAILED_TWICE_NOTE,
 } from '../domain/try-on.rules';
 import {
   CUSTOMER_PREVIEW_REPOSITORY,
@@ -58,6 +62,9 @@ import {
   type TryOnFiles,
 } from './ports/try-on.ports';
 
+/** A try-on she already has, while a more accurate version is made in the background (TryOnWorker). */
+const isImproving = (row: CustomerPreviewRecord) =>
+  row.kind === 'TRYON' && Boolean(row.resultPath) && (row.status === 'QUEUED' || row.status === 'RUNNING');
 const mimeOf = (path: string) => (path.endsWith('.png') ? 'image/png' : path.endsWith('.webp') ? 'image/webp' : 'image/jpeg');
 
 /** Links to a result the customer (or the admin) is looking at. */
@@ -66,6 +73,8 @@ const RESULT_URL_TTL_SECONDS = 60 * 60;
 /** At most this many recent pictures are listed under the AI studio. */
 /** A try-on in another colour than photographed (her customised version, from that colour's photo). */
 const CUSTOM_COLOUR_LINE = 'Customised colour';
+/** A photo checked when she picked it is trusted by "Try it on" for this long. */
+const CHECKED_PHOTO_TTL_MS = 30 * 60_000;
 const RECENT_LIMIT = 12;
 /** At most this many on her profile (a day's allowance is far fewer, and each lasts an hour). */
 const MINE_LIMIT = 60;
@@ -82,6 +91,9 @@ type Limits = Pick<
  */
 @Injectable()
 export class TryOnService {
+  /** Photos cleaned and checked when she picked them (path → until when), so they are not checked twice. */
+  private readonly checkedPhotos = new Map<string, number>();
+
   constructor(
     @Inject(CUSTOMER_PREVIEW_REPOSITORY) private readonly repo: CustomerPreviewRepository,
     @Inject(TRYON_FILES) private readonly files: TryOnFiles,
@@ -416,12 +428,41 @@ export class TryOnService {
    * removed, then Gemini checks it is usable (one woman, standing, body visible, good light).
    * An unsuitable photo is deleted and she is told why. No checker: it goes ahead.
    */
+  /**
+   * Her photo, checked the moment she picks it (docs/apps/web.md "Photo check"): a photo that
+   * cannot work (sitting, cropped, half body, …) is deleted at once and she is told why, before any
+   * FASHN credit is spent. When the check cannot run, the photo is allowed.
+   */
+  async checkPhoto(body: CheckTryOnPhotoBody, now = Date.now()): Promise<TryOnPhotoCheckDto> {
+    this.uploads.assertPath('TRYON_PHOTO', body.personPath);
+    const cleaned = await this.uploads.cleanPhoto(body.personPath);
+    if (!cleaned) throw new BusinessRuleError('PHOTO_MISSING', 'Your photo did not upload. Please choose it again.');
+    const verdict = this.checker.available ? await this.assessPhoto(body.personPath) : null;
+    if (verdict && !verdict.ok) {
+      await this.files.remove([body.personPath]);
+      return { ok: false, checked: true, problem: photoProblem(verdict.reason) };
+    }
+    // Cleaned (and checked when possible): "Try it on" does not do either again.
+    for (const [path, until] of this.checkedPhotos) if (until <= now) this.checkedPhotos.delete(path);
+    this.checkedPhotos.set(body.personPath, now + CHECKED_PHOTO_TTL_MS);
+    return { ok: true, checked: verdict !== null, problem: null };
+  }
+
+  private async assessPhoto(path: string): Promise<{ ok: boolean; reason: string } | null> {
+    const data = await this.files.read(path);
+    return data ? this.checker.assessPhoto({ data, mimeType: mimeOf(path) }, PHOTO_QUESTION) : null;
+  }
+
   private async preparePhoto(path: string): Promise<void> {
+    const until = this.checkedPhotos.get(path);
+    if (until !== undefined) {
+      this.checkedPhotos.delete(path);
+      if (until > Date.now()) return;
+    }
     const cleaned = await this.uploads.cleanPhoto(path);
     if (!cleaned) throw new BusinessRuleError('PHOTO_MISSING', 'Your photo did not upload. Please choose it again.');
     if (!this.checker.available) return;
-    const data = await this.files.read(path);
-    const verdict = data ? await this.checker.assessPhoto({ data, mimeType: mimeOf(path) }, PHOTO_QUESTION) : null;
+    const verdict = await this.assessPhoto(path);
     if (verdict && !verdict.ok) {
       await this.files.remove([path]);
       throw new BusinessRuleError('PHOTO_NOT_SUITABLE', photoTip(verdict.reason), { reason: verdict.reason });
@@ -476,8 +517,10 @@ export class TryOnService {
     );
   }
 
+  /** A finished picture, or a try-on she already has while a better one is being made. */
   private async resultUrl(row: CustomerPreviewRecord): Promise<string | null> {
-    return row.status === 'DONE' && row.resultPath ? this.files.signedUrl(row.resultPath, RESULT_URL_TTL_SECONDS) : null;
+    const shown = row.status === 'DONE' || isImproving(row);
+    return shown && row.resultPath ? this.files.signedUrl(row.resultPath, RESULT_URL_TTL_SECONDS) : null;
   }
 
   /** `leftOut`: what was dropped from the wish of this request (a shared picture may have had none). */
@@ -491,8 +534,12 @@ export class TryOnService {
       id: row.id,
       kind: row.kind,
       designId: row.designId,
-      status: row.status,
+      // A try-on being improved is hers already: DONE, with the picture she has.
+      status: isImproving(row) ? 'DONE' : row.status,
       imageUrl: await this.resultUrl(row),
+      improving: isImproving(row),
+      improved: row.kind === 'TRYON' && row.status === 'DONE' && row.retries > 0 && !(row.checkNotes ?? '').startsWith(FAILED_TWICE_NOTE),
+      mayDiffer: row.kind === 'TRYON' && (row.checkNotes ?? '').startsWith(FAILED_TWICE_NOTE),
       error:
         row.status !== 'FAILED' ? null : row.inaccurate ? (row.kind === 'TRYON' ? INACCURATE_TRYON_MESSAGE : INACCURATE_MESSAGE) : row.error,
       createdAt: row.createdAt.toISOString(),
